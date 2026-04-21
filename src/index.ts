@@ -1,7 +1,24 @@
 import { Elysia } from "elysia";
+import { userPlugin } from "./plugins/user";
+import { getDbConnection } from "./database/service";
+import { errorHandler } from "./plugins/errors";
+import UserService from "./plugins/user/service";
+import authPlugin from "./plugins/auth";
 
-const app = new Elysia().get("/", () => "Hello Elysia").listen(3000);
+async function bootstrapServer() {
+    const db = getDbConnection(Bun.env.DATABASE_URL!);
+    const userService = new UserService(db);
+    const app = new Elysia()
+        .use(errorHandler)
+        .get("/health", () => {
+            return { status: "ok" };
+        })
+        .use(userPlugin(userService, "/users"))
+        .use(authPlugin(userService))
+        .listen(3000);
+    console.log(
+        `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`,
+    );
+}
 
-console.log(
-  `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`
-);
+bootstrapServer();
