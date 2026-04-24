@@ -22,14 +22,16 @@ export const errorHandler = new Elysia()
             return status(404, { message: error.message });
         }
 
-        errorLog("unexpected error", {
-            method: request.method,
-            path,
-            message: error.message,
-            name: error.name,
-        });
+        if (error instanceof Error) {
+            errorLog("unexpected error", {
+                method: request.method,
+                path,
+                message: error.message,
+                name: error.name,
+            });
+            return status(500, { message: error.message });
+        }
 
-        return status(500, { message: error.message });
     });
 
 export default errorHandler;

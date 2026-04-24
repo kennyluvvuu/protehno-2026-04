@@ -11,7 +11,7 @@ export const recordsPlugin = (
     new Elysia({
         prefix: "/records",
     })
-        .use(guardPlugin)
+        .use(guardPlugin())
         .post(
             "/upload",
             async ({ userId, body: { file } }) => {
