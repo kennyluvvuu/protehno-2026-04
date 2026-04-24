@@ -7,6 +7,7 @@ import authPlugin from "./plugins/auth";
 import { recordsPlugin } from "./plugins/records";
 import RecordService from "./plugins/records/service";
 import LocalStorage from "./storage/local";
+import { cors } from "@elysiajs/cors";
 
 async function bootstrapServer() {
     const db = getDbConnection(Bun.env.DATABASE_URL!);
@@ -14,6 +15,7 @@ async function bootstrapServer() {
     const recordsService = new RecordService(db);
     const localStorage = new LocalStorage("./uploads/");
     const app = new Elysia()
+        .use(cors())
         .use(errorHandler)
         .get("/health", () => {
             return { status: "ok" };
