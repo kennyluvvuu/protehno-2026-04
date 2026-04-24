@@ -45,26 +45,34 @@
 
 1. Зарегистрировать пользователя через `POST /users/register`
 2. Выполнить логин через `POST /login`
-3. Сохранить `token` из ответа
-4. Передавать токен в `Authorization: Bearer <token>` для защищённых endpoint'ов
-5. Загрузить аудио через `POST /records/upload`
-6. Взять `id` записи из ответа
-7. Периодически вызывать `GET /records/:id`
-8. Остановить polling, когда статус станет `done` или `failed`
+3. Получить от backend `httpOnly` cookie авторизации
+4. Для защищённых endpoint'ов отправлять запросы с cookie, а не с Bearer token
+5. Если фронтенд и backend на разных origin, включать отправку credentials
+6. Загрузить аудио через `POST /records/upload`
+7. Взять `id` записи из ответа
+8. Периодически вызывать `GET /records/:id`
+9. Остановить polling, когда статус станет `done` или `failed`
 
 ---
 
 ## Авторизация
 
-После логина backend возвращает JWT в поле `token`.
+После логина backend выставляет `httpOnly` cookie `auth`.
 
-Для защищённых запросов фронтенд должен отправлять заголовок:
+JWT действительно используется внутри backend, но для фронтенда контракт такой: токен живёт в cookie и не читается из JavaScript.
 
-```/dev/null/http.txt#L1-1
-Authorization: Bearer <jwt-token>
+Для защищённых запросов фронтенд не должен отправлять `Authorization: Bearer ...`.
+
+```/dev/null/http.txt#L1-3
+fetch("http://localhost:3000/records", {
+  credentials: "include"
+})
 ```
 
-Практически это значит, что во фронтенде лучше сделать единый API client или interceptor, который автоматически подставляет токен в нужные запросы.
+Практически это значит, что во фронтенде лучше сделать единый API client, который автоматически включает отправку cookie в защищённых запросах.
+
+Если фронтенд использует `fetch`, нужен `credentials: "include"` для cross-origin запросов.
+Если используется `axios`, нужен `withCredentials: true`.
 
 ---
 
@@ -175,19 +183,19 @@ Authorization: Bearer <jwt-token>
 
 ### Успешный ответ
 
-```/dev/null/login-response.json#L1-6
+```/dev/null/login-response.json#L1-5
 {
   "id": 1,
   "name": "Alice",
-  "email": "alice@example.com",
-  "token": "<jwt-token>"
+  "email": "alice@example.com"
 }
 ```
 
 ### Что важно для фронтенда
 
-- нужно сохранить `token`;
-- защищённые запросы потом выполняются с `Authorization: Bearer <token>`;
+- backend устанавливает `httpOnly` cookie `auth`;
+- фронтенд не должен пытаться читать токен из JavaScript;
+- защищённые запросы потом выполняются с cookie;
 - если логин или пароль неверные, backend вернёт ошибку.
 
 ---
@@ -236,7 +244,7 @@ Authorization: Bearer <jwt-token>
 
 ### Авторизация
 
-Требуется JWT.
+Требуется авторизация через `httpOnly` cookie `auth`.
 
 ### Формат запроса
 
@@ -254,6 +262,8 @@ Authorization: Bearer <jwt-token>
 - сразу возвращает ответ.
 
 ### Пример успешного ответа
+
+Успешный статус ответа: `202 Accepted`
 
 ```/dev/null/upload-response.json#L1-7
 {
@@ -280,7 +290,7 @@ Authorization: Bearer <jwt-token>
 
 ### Авторизация
 
-Требуется JWT.
+Требуется авторизация через `httpOnly` cookie `auth`.
 
 ### Пример ответа
 
@@ -320,7 +330,7 @@ Authorization: Bearer <jwt-token>
 
 ### Авторизация
 
-Требуется JWT.
+Требуется авторизация через `httpOnly` cookie `auth`.
 
 ### Зачем нужен этот endpoint
 
@@ -507,7 +517,7 @@ bun run dev
 Приоритет этой секции:
 
 - зафиксировать контракты endpoint'ов;
-- объяснить сценарий авторизации;
+- объяснить сценарий авторизации через cookie;
 - объяснить асинхронную модель загрузки записей;
 - помочь агенту писать клиентский код на фронтенде;
 - не уводить внимание во внутреннее устройство backend.
@@ -544,8 +554,9 @@ bun run dev
 
 Агент должен считать, что:
 
-- `POST /login` возвращает `token`;
-- защищённые endpoint'ы требуют `Authorization: Bearer <token>`;
+- `POST /login` устанавливает `httpOnly` cookie `auth`;
+- защищённые endpoint'ы используют cookie-аутентификацию;
+- frontend должен отправлять credentials/cookies в защищённые запросы;
 - `POST /records/upload` только запускает асинхронную обработку;
 - финальные AI-данные нужно получать через `GET /records/:id`;
 - история записей берётся через `GET /records`.
@@ -567,20 +578,22 @@ bun run dev
 
 Успешный ответ:
 
-```/dev/null/agent-login-response.json#L1-6
+```/dev/null/agent-login-response.json#L1-5
 {
   "id": 1,
   "name": "Alice",
-  "email": "alice@example.com",
-  "token": "<jwt-token>"
+  "email": "alice@example.com"
 }
 ```
 
+Дополнительно backend устанавливает `httpOnly` cookie `auth`.
+
 Интеграционное правило:
 
-- агент должен использовать `token` как источник авторизации;
-- агент должен подставлять `Authorization: Bearer <jwt-token>` во все защищённые запросы;
-- если во фронтенде есть общий API client, токен нужно подключать централизованно.
+- агент не должен ожидать `token` в JSON-ответе;
+- агент должен считать cookie основным механизмом авторизации;
+- агент должен включать credentials/cookies во все защищённые запросы;
+- если во фронтенде есть общий API client, отправку credentials нужно подключать централизованно.
 
 ---
 
@@ -670,7 +683,8 @@ Body:
 
 Интерпретация для агента:
 
-- сохранить `token`;
+- не ожидать `token` в response body;
+- считать, что после успешного логина backend выставляет `httpOnly` cookie `auth`;
 - при необходимости сохранить пользователя в session store;
 - сообщение `Invalid credentials` показывать как ошибку входа.
 
@@ -696,6 +710,7 @@ Body:
 
 Интерпретация для агента:
 
+- endpoint защищён через cookie-аутентификацию;
 - endpoint возвращает массив;
 - тип можно моделировать как `Array<{ id: number; name: string; email: string }>`.
 
@@ -731,7 +746,7 @@ Body:
 
 Авторизация:
 
-- требуется JWT.
+- требуется `httpOnly` cookie `auth`.
 
 Формат:
 
@@ -767,7 +782,7 @@ Body:
 
 Авторизация:
 
-- требуется JWT.
+- требуется `httpOnly` cookie `auth`.
 
 Ответ:
 
@@ -807,7 +822,7 @@ Body:
 
 Авторизация:
 
-- требуется JWT.
+- требуется `httpOnly` cookie `auth`.
 
 Во время обработки ответ может выглядеть так:
 
@@ -909,7 +924,7 @@ Body:
   - `RecordDetails`
   - `RecordStatus`
 - вынести API-вызовы в отдельный клиент;
-- сделать helper для `Authorization` header;
+- централизованно включить отправку credentials/cookies;
 - реализовать polling как отдельный hook или utility;
 - проектировать UI с учётом того, что upload и финальный результат — это два разных этапа.
 
