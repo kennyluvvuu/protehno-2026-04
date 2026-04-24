@@ -13,8 +13,8 @@ async function bootstrapServer() {
         .get("/health", () => {
             return { status: "ok" };
         })
-        .use(userPlugin(userService, "/users"))
         .use(authPlugin(userService))
+        .use(userPlugin(userService))
         .listen(3000);
     console.log(
         `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`,

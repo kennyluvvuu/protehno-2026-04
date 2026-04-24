@@ -1,6 +1,5 @@
-import bearer from "@elysiajs/bearer";
 import jwt from "@elysiajs/jwt";
-import Elysia from "elysia";
+import Elysia, { t } from "elysia";
 
 export const guardPlugin = () =>
     new Elysia()
@@ -10,15 +9,18 @@ export const guardPlugin = () =>
                 secret: Bun.env.JWT_SECRET!,
             }),
         )
-        .use(bearer())
-        .derive({ as: "global" }, async ({ jwt, bearer, status }) => {
-            if (!bearer) {
+        .derive({ as: "global" }, async ({ jwt, cookie, status }) => {
+            const token = cookie.auth?.value as string;
+
+            if (!token) {
                 return status(401, { message: "Unauthorized" });
             }
-            const decoded = await jwt.verify(bearer);
+
+            const decoded = await jwt.verify(token);
             if (!decoded) {
                 return status(401, { message: "Unauthorized" });
             }
+
             return {
                 userId: decoded.id as number,
             };
