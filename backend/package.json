@@ -6,8 +6,11 @@
     "dev": "bun run --watch src/index.ts"
   },
   "dependencies": {
+    "@ai-sdk/mistral": "^3.0.30",
+    "@ai-sdk/openai": "^3.0.53",
     "@elysiajs/cors": "^1.4.2",
     "@elysiajs/jwt": "^1.4.1",
+    "ai": "^6.0.168",
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",

@@ -1,4 +1,4 @@
-import { integer, pgTable, text } from "drizzle-orm/pg-core";
+import { integer, pgTable, text, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { userTable } from "../user/model";
 
 export const recordTable = pgTable("records", {
@@ -11,6 +11,11 @@ export const recordTable = pgTable("records", {
     fileUri: text("file_uri").notNull(),
     transcription: text("transcription"),
     summary: text("summary"),
+    status: text("status").notNull().default("uploaded"),
+    error: text("error"),
+    startedAt: timestamp("started_at"),
+    finishedAt: timestamp("finished_at"),
+    checkboxes: jsonb("checkboxes"),
 });
 
 export const tagsTable = pgTable("tags", {
