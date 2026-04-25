@@ -152,20 +152,24 @@ fetch("http://localhost:3000/records", {
 
 ### Body
 
-```/dev/null/register-request.json#L1-5
+```/dev/null/register-request.json#L1-7
 {
   "name": "Alice",
   "email": "alice@example.com",
-  "password": "qwerty123"
+  "password": "qwerty123",
+  "role": ["manager"],
+  "fio": "Иванов Иван Иванович"
 }
 ```
 
 ### Успешный ответ
 
-```/dev/null/register-response.json#L1-5
+```/dev/null/register-response.json#L1-7
 {
   "id": 1,
   "name": "Alice",
+  "fio": "Иванов Иван Иванович",
+  "role": ["manager"],
   "email": "alice@example.com"
 }
 ```
@@ -216,11 +220,13 @@ fetch("http://localhost:3000/records", {
 
 ### Успешный ответ
 
-```/dev/null/users-list.json#L1-8
+```/dev/null/users-list.json#L1-10
 [
   {
     "id": 1,
     "name": "Alice",
+    "fio": "Иванов Иван Иванович",
+    "role": ["manager"],
     "email": "alice@example.com"
   }
 ]
@@ -236,10 +242,12 @@ fetch("http://localhost:3000/records", {
 
 ### Пример ответа
 
-```/dev/null/user-by-id.json#L1-5
+```/dev/null/user-by-id.json#L1-7
 {
   "id": 1,
   "name": "Alice",
+  "fio": "Иванов Иван Иванович",
+  "role": ["manager"],
   "email": "alice@example.com"
 }
 ```
@@ -654,20 +662,24 @@ bun run dev
 
 Body:
 
-```/dev/null/agent-register-request.json#L1-5
+```/dev/null/agent-register-request.json#L1-7
 {
   "name": "Alice",
   "email": "alice@example.com",
-  "password": "qwerty123"
+  "password": "qwerty123",
+  "role": ["manager"],
+  "fio": "Иванов Иван Иванович"
 }
 ```
 
 Успешный ответ:
 
-```/dev/null/agent-register-response.json#L1-5
+```/dev/null/agent-register-response.json#L1-7
 {
   "id": 1,
   "name": "Alice",
+  "fio": "Иванов Иван Иванович",
+  "role": ["manager"],
   "email": "alice@example.com"
 }
 ```
@@ -723,11 +735,13 @@ Body:
 
 Ответ:
 
-```/dev/null/agent-users-response.json#L1-8
+```/dev/null/agent-users-response.json#L1-10
 [
   {
     "id": 1,
     "name": "Alice",
+    "fio": "Иванов Иван Иванович",
+    "role": ["manager"],
     "email": "alice@example.com"
   }
 ]
@@ -749,10 +763,12 @@ Body:
 
 Ответ:
 
-```/dev/null/agent-user-id-response.json#L1-5
+```/dev/null/agent-user-id-response.json#L1-7
 {
   "id": 1,
   "name": "Alice",
+  "fio": "Иванов Иван Иванович",
+  "role": ["manager"],
   "email": "alice@example.com"
 }
 ```

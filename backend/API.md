@@ -109,7 +109,9 @@ Request:
 {
   "name": "Alice",
   "email": "alice@example.com",
-  "password": "qwerty123"
+  "password": "qwerty123",
+  "role": ["manager"],
+  "fio": "Иванов Иван Иванович"
 }
 ```
 
@@ -118,6 +120,8 @@ Success `200`:
 {
   "id": 1,
   "name": "Alice",
+  "fio": "Иванов Иван Иванович",
+  "role": ["manager"],
   "email": "alice@example.com"
 }
 ```
@@ -137,6 +141,8 @@ Success `200`:
 {
   "id": 1,
   "name": "Alice",
+  "fio": "Иванов Иван Иванович",
+  "role": ["manager"],
   "email": "alice@example.com"
 }
 ```
@@ -153,6 +159,8 @@ Success `200`:
   {
     "id": 1,
     "name": "Alice",
+    "fio": "Иванов Иван Иванович",
+    "role": ["manager"],
     "email": "alice@example.com"
   }
 ]
@@ -163,6 +171,8 @@ Type shape:
 type User = {
   id: number;
   name: string;
+  fio: string | null;
+  role: Array<"director" | "manager">;
   email: string;
 };
 ```
@@ -178,6 +188,8 @@ Success `200`:
 {
   "id": 1,
   "name": "Alice",
+  "fio": "Иванов Иван Иванович",
+  "role": ["manager"],
   "email": "alice@example.com"
 }
 ```

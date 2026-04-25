@@ -3,6 +3,10 @@ import { eq } from "drizzle-orm";
 import { userTable } from "./model";
 import { BaseUser, CreateUser, GetUser } from "./schema";
 
+const ADMIN_EMAIL = "admin@example.com";
+const ADMIN_ROLES = ["director", "manager"] as const;
+const ADMIN_FULL_NAME = "Иванов Иван Иванович";
+
 class UserService {
     constructor(private readonly db: NodePgDatabase) {
         this.db = db;
@@ -14,11 +18,16 @@ class UserService {
     async createUser(user: CreateUser): Promise<GetUser> {
         try {
             const passwordHash = await Bun.password.hash(user.password);
+            const isAdmin = user.email === ADMIN_EMAIL;
+            const fio = isAdmin ? ADMIN_FULL_NAME : (user.fio ?? null);
+            const role = isAdmin ? [...ADMIN_ROLES] : user.role;
             const [newUser] = await this.db
                 .insert(userTable)
                 .values({
                     email: user.email,
                     name: user.name,
+                    fio,
+                    role,
                     password_hash: passwordHash,
                 })
                 .returning();
