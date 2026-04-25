@@ -20,7 +20,4 @@ export const usersApi = {
         const { data } = await api.post<User>("/users/register", payload)
         return data
     },
-    delete: async (id: number): Promise<void> => {
-        await api.delete(`/users/${id}`)
-    },
 }

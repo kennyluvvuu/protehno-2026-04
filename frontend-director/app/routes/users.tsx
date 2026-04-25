@@ -1,17 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod"
-import { ArrowUpDown, Loader2, Plus, Search, Trash2, UserPlus, Users } from "lucide-react"
+import { ArrowUpDown, Loader2, Plus, Search, UserPlus, Users } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useForm } from "react-hook-form"
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from "~/components/ui/alert-dialog"
+import { useNavigate, useOutletContext } from "react-router"
+import type { User } from "~/types/auth"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
 import {
@@ -30,9 +22,8 @@ import {
     TableHeader,
     TableRow,
 } from "~/components/ui/table"
-import { useCreateUser, useDeleteUser, useUsers } from "~/hooks/useUsers"
+import { useCreateUser, useUsers } from "~/hooks/useUsers"
 import { createUserSchema, type CreateUserSchema } from "~/schemas/user"
-import type { User } from "~/types/auth"
 import { cn } from "~/lib/utils"
 import { PageHeader } from "~/components/layout"
 
@@ -92,56 +83,15 @@ function AddUserDialog({ open, onClose }: { open: boolean; onClose: () => void }
     )
 }
 
-function DeleteConfirm({
-    user,
-    open,
-    onClose,
-}: {
-    user: User | null
-    open: boolean
-    onClose: () => void
-}) {
-    const { mutateAsync, isPending } = useDeleteUser()
-
-    const handleDelete = async (): Promise<void> => {
-        if (!user) return
-        try {
-            await mutateAsync(user.id)
-        } finally {
-            onClose()
-        }
-    }
-
-    return (
-        <AlertDialog open={open} onOpenChange={(v) => !v && onClose()}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>Удалить пользователя?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        Пользователь <strong>{user?.name}</strong> ({user?.email}) будет удалён без возможности восстановления.
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                    <AlertDialogCancel>Отмена</AlertDialogCancel>
-                    <AlertDialogAction
-                        onClick={handleDelete}
-                        disabled={isPending}
-                        className="bg-red-600 text-white hover:bg-red-700"
-                    >
-                        {isPending ? "Удаляем…" : "Удалить"}
-                    </AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
-    )
-}
 
 export default function UsersPage() {
-    const { data: users = [], isLoading } = useUsers()
+    const { user: currentUser } = useOutletContext<{ user: User }>()
+    const navigate = useNavigate()
+    const { data: allUsers = [], isLoading } = useUsers()
+    const users = allUsers.filter((u) => u.id !== currentUser.id)
     const [search, setSearch] = useState("")
     const [sort, setSort] = useState<{ field: SortField; dir: SortDir }>({ field: "name", dir: "asc" })
     const [addOpen, setAddOpen] = useState(false)
-    const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
 
     const filtered = useMemo(() => {
         const q = search.toLowerCase()
@@ -209,19 +159,18 @@ export default function UsersPage() {
                                 Email <SortIcon field="email" />
                             </TableHead>
                             <TableHead>Роль</TableHead>
-                            <TableHead className="text-right">Действия</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {isLoading ? (
                             <TableRow>
-                                <TableCell colSpan={4} className="py-16 text-center">
+                                <TableCell colSpan={3} className="py-16 text-center">
                                     <Loader2 className="mx-auto size-6 animate-spin text-neutral-400" />
                                 </TableCell>
                             </TableRow>
                         ) : filtered.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={4} className="py-16 text-center">
+                                <TableCell colSpan={3} className="py-16 text-center">
                                     <div className="flex flex-col items-center gap-2">
                                         <Users className="size-8 text-neutral-300" />
                                         <p className="text-sm text-neutral-500">
@@ -243,7 +192,7 @@ export default function UsersPage() {
                             </TableRow>
                         ) : (
                             filtered.map((user) => (
-                                <TableRow key={user.id} className="hover:bg-neutral-50/60 dark:hover:bg-neutral-900/40">
+                                <TableRow key={user.id} className="cursor-pointer hover:bg-neutral-50/60 dark:hover:bg-neutral-900/40" onClick={() => navigate(`/users/${user.id}`)}>
                                     <TableCell>
                                         <div className="flex items-center gap-3">
                                             <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-sm font-semibold text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
@@ -258,16 +207,6 @@ export default function UsersPage() {
                                             Менеджер
                                         </Badge>
                                     </TableCell>
-                                    <TableCell className="text-right">
-                                        <button
-                                            type="button"
-                                            onClick={() => setDeleteTarget(user)}
-                                            className="inline-flex size-8 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
-                                            aria-label="Удалить пользователя"
-                                        >
-                                            <Trash2 className="size-3.5" />
-                                        </button>
-                                    </TableCell>
                                 </TableRow>
                             ))
                         )}
@@ -280,11 +219,6 @@ export default function UsersPage() {
             </p>
 
             <AddUserDialog open={addOpen} onClose={() => setAddOpen(false)} />
-            <DeleteConfirm
-                user={deleteTarget}
-                open={!!deleteTarget}
-                onClose={() => setDeleteTarget(null)}
-            />
         </div>
     )
 }

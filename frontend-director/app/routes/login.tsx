@@ -28,6 +28,11 @@ export default function Login() {
     const onSubmit = async (data: LoginSchema): Promise<void> => {
         try {
             const user = await authApi.login(data)
+            if (user.role !== "director") {
+                await authApi.logout()
+                toast.error("Неверный email или пароль")
+                return
+            }
             setUser(user)
             toast.success("Добро пожаловать")
             await revalidate()

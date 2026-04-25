@@ -7,7 +7,7 @@ export default [
         index("routes/home.tsx"),
         route("calls", "routes/calls.tsx"),
         route("users", "routes/users.tsx"),
+        route("users/:id", "routes/users.$id.tsx"),
         route("settings", "routes/settings.tsx"),
-        route("search", "routes/search.tsx"),
     ]),
 ] satisfies RouteConfig

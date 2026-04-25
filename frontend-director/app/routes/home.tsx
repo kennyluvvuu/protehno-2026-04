@@ -1,42 +1,23 @@
 import { useQuery } from "@tanstack/react-query"
 import { Activity, CheckCircle2, FileAudio, TrendingUp, Users, XCircle } from "lucide-react"
+import { useState } from "react"
+import { useOutletContext } from "react-router"
+import { ManagersModal } from "~/components/users/managers-modal"
+import type { User } from "~/types/auth"
 import {
-    Bar,
-    BarChart,
-    CartesianGrid,
-    Cell,
-    Line,
-    LineChart,
-    Pie,
-    PieChart,
-    ResponsiveContainer,
-    Tooltip,
-    XAxis,
-    YAxis,
+    Bar, BarChart, CartesianGrid, Cell,
+    Line, LineChart, Pie, PieChart,
+    ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts"
 import { healthApi } from "~/axios/health"
 import { PageHeader } from "~/components/layout"
 import { Badge } from "~/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card"
 import { useUsers } from "~/hooks/useUsers"
-import {
-    AGENT_STATS,
-    MOCK_RECORDS,
-    QUALITY_DISTRIBUTION,
-    WEEKLY_CALLS,
-} from "~/lib/mock-data"
+import { useRecords } from "~/hooks/useRecords"
+import { WEEKLY_CALLS, AGENT_STATS } from "~/lib/mock-data"
 
-function StatCard({
-    title,
-    value,
-    sub,
-    icon: Icon,
-}: {
-    title: string
-    value: string | number
-    sub?: string
-    icon: React.ElementType
-}) {
+function StatCard({ title, value, sub, icon: Icon }: { title: string; value: string | number; sub?: string; icon: React.ElementType }) {
     return (
         <Card>
             <CardContent className="pt-5">
@@ -56,24 +37,23 @@ function StatCard({
 }
 
 export default function Dashboard() {
-    const { data: health } = useQuery({
-        queryKey: ["health"],
-        queryFn: healthApi.check,
-        refetchInterval: 30_000,
-    })
+    const { user } = useOutletContext<{ user: User }>()
+    const [managersOpen, setManagersOpen] = useState(false)
+    const { data: health } = useQuery({ queryKey: ["health"], queryFn: healthApi.check, refetchInterval: 30_000 })
     const { data: users } = useUsers()
+    const { data: records = [] } = useRecords()
 
-    const totalCalls = MOCK_RECORDS.length
-    const successCalls = MOCK_RECORDS.filter((r) => r.status === "success").length
-    const failedCalls = MOCK_RECORDS.filter((r) => r.status === "failed").length
-    const avgQuality = Math.round(
-        MOCK_RECORDS.reduce((acc, r) => acc + r.qualityScore, 0) / MOCK_RECORDS.length,
-    )
+    const totalCalls = records.length
+    const doneCalls = records.filter((r) => r.status === "done").length
+    const failedCalls = records.filter((r) => r.status === "failed").length
+    const inProgressCalls = totalCalls - doneCalls - failedCalls
+
+    const successRate = totalCalls > 0 ? Math.round((doneCalls / totalCalls) * 100) : 0
 
     const pieData = [
-        { name: "Успешные", value: successCalls, fill: "#22c55e" },
-        { name: "Отказ", value: failedCalls, fill: "#ef4444" },
-        { name: "В обработке", value: totalCalls - successCalls - failedCalls, fill: "#f97316" },
+        { name: "Выполнено", value: doneCalls, fill: "#22c55e" },
+        { name: "Ошибка", value: failedCalls, fill: "#ef4444" },
+        { name: "В обработке", value: inProgressCalls, fill: "#f97316" },
     ]
 
     return (
@@ -85,28 +65,28 @@ export default function Dashboard() {
                     <div className="flex items-center gap-2">
                         {health?.status === "ok" ? (
                             <Badge variant="outline" className="gap-1.5 border-green-200 text-green-700 bg-green-50 dark:border-green-700 dark:bg-green-950/35 dark:text-green-300">
-                                <CheckCircle2 className="size-3" />
-                                Сервер работает
+                                <CheckCircle2 className="size-3" />Сервер работает
                             </Badge>
                         ) : (
                             <Badge variant="outline" className="gap-1.5 border-red-200 text-red-700 bg-red-50 dark:border-red-700 dark:bg-red-950/35 dark:text-red-300">
-                                <XCircle className="size-3" />
-                                Сервер недоступен
+                                <XCircle className="size-3" />Сервер недоступен
                             </Badge>
                         )}
                     </div>
                 }
             />
 
-            {/* Stat cards */}
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                <StatCard title="Всего звонков" value={totalCalls} sub="за период" icon={FileAudio} />
-                <StatCard title="Успешных" value={successCalls} sub={`${Math.round((successCalls / totalCalls) * 100)}% от всех`} icon={TrendingUp} />
-                <StatCard title="Качество звонков" value={`${avgQuality}%`} sub="средний балл" icon={Activity} />
-                <StatCard title="Менеджеров" value={users?.length ?? "—"} sub="активных" icon={Users} />
+                <StatCard title="Всего записей" value={totalCalls} sub="в feed" icon={FileAudio} />
+                <StatCard title="Выполнено" value={doneCalls} sub={`${successRate}% от всех`} icon={TrendingUp} />
+                <StatCard title="Успешность" value={`${successRate}%`} sub="обработка AI" icon={Activity} />
+                <button type="button" onClick={() => setManagersOpen(true)} className="text-left">
+                    <StatCard title="Менеджеров" value={users?.length ?? "—"} sub="нажмите для просмотра" icon={Users} />
+                </button>
             </div>
 
-            {/* Charts row 1 */}
+            <ManagersModal open={managersOpen} onClose={() => setManagersOpen(false)} currentUserId={user.id} />
+
             <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <Card className="lg:col-span-2">
                     <CardHeader className="pb-2">
@@ -118,27 +98,9 @@ export default function Dashboard() {
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                                 <XAxis dataKey="day" tick={{ fontSize: 11 }} />
                                 <YAxis tick={{ fontSize: 11 }} />
-                                <Tooltip
-                                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                                    formatter={(v: number, name: string) => [
-                                        v,
-                                        name === "calls" ? "Всего" : "Успешных",
-                                    ]}
-                                />
-                                <Line
-                                    type="monotone"
-                                    dataKey="calls"
-                                    stroke="#64748b"
-                                    strokeWidth={2}
-                                    dot={false}
-                                />
-                                <Line
-                                    type="monotone"
-                                    dataKey="success"
-                                    stroke="#3b82f6"
-                                    strokeWidth={2}
-                                    dot={false}
-                                />
+                                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number, name: string) => [v, name === "calls" ? "Всего" : "Успешных"]} />
+                                <Line type="monotone" dataKey="calls" stroke="#64748b" strokeWidth={2} dot={false} />
+                                <Line type="monotone" dataKey="success" stroke="#3b82f6" strokeWidth={2} dot={false} />
                             </LineChart>
                         </ResponsiveContainer>
                         <div className="mt-2 flex gap-4 text-xs text-neutral-500">
@@ -150,23 +112,13 @@ export default function Dashboard() {
 
                 <Card>
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium">Статус звонков</CardTitle>
+                        <CardTitle className="text-sm font-medium">Статус обработки</CardTitle>
                     </CardHeader>
                     <CardContent className="flex flex-col items-center">
                         <ResponsiveContainer width="100%" height={160}>
                             <PieChart>
-                                <Pie
-                                    data={pieData}
-                                    cx="50%"
-                                    cy="50%"
-                                    innerRadius={45}
-                                    outerRadius={70}
-                                    dataKey="value"
-                                    paddingAngle={3}
-                                >
-                                    {pieData.map((entry) => (
-                                        <Cell key={entry.name} fill={entry.fill} />
-                                    ))}
+                                <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} dataKey="value" paddingAngle={3}>
+                                    {pieData.map((entry) => <Cell key={entry.name} fill={entry.fill} />)}
                                 </Pie>
                                 <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                             </PieChart>
@@ -183,29 +135,7 @@ export default function Dashboard() {
                 </Card>
             </div>
 
-            {/* Charts row 2 */}
-            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium">Распределение качества</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <ResponsiveContainer width="100%" height={180}>
-                            <BarChart data={QUALITY_DISTRIBUTION} barSize={28}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                                <XAxis dataKey="range" tick={{ fontSize: 11 }} />
-                                <YAxis tick={{ fontSize: 11 }} />
-                                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                                <Bar dataKey="count" name="Звонков" radius={[4, 4, 0, 0]}>
-                                    {QUALITY_DISTRIBUTION.map((entry) => (
-                                        <Cell key={entry.range} fill={entry.fill} />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </CardContent>
-                </Card>
-
+            <div className="mt-4">
                 <Card>
                     <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-medium">Статистика по агентам</CardTitle>
@@ -216,13 +146,7 @@ export default function Dashboard() {
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
                                 <XAxis type="number" tick={{ fontSize: 11 }} />
                                 <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={80} />
-                                <Tooltip
-                                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                                    formatter={(v: number, name: string) => [
-                                        v,
-                                        name === "calls" ? "Звонков" : "Ср. балл",
-                                    ]}
-                                />
+                                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number, name: string) => [v, name === "calls" ? "Звонков" : "Ср. балл"]} />
                                 <Bar dataKey="calls" name="Звонков" fill="#64748b" radius={[0, 4, 4, 0]} />
                                 <Bar dataKey="avgScore" name="Ср. балл" fill="#3b82f6" radius={[0, 4, 4, 0]} />
                             </BarChart>

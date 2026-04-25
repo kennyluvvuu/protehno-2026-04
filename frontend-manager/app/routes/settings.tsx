@@ -1,85 +1,80 @@
-import { useState } from "react"
+import { Moon, Sun, User } from "lucide-react"
+import { useOutletContext } from "react-router"
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card"
+import { Separator } from "~/components/ui/separator"
 import { PageHeader } from "~/components/layout"
-
-interface Toggle {
-    id: string
-    title: string
-    description: string
-    defaultOn: boolean
-}
-
-const toggles: Toggle[] = [
-    {
-        id: "notifications",
-        title: "Уведомления",
-        description: "Получать письма о новых записях",
-        defaultOn: true,
-    },
-    {
-        id: "autoplay",
-        title: "Автовоспроизведение",
-        description: "Запускать плеер при открытии записи",
-        defaultOn: false,
-    },
-    {
-        id: "analytics",
-        title: "Аналитика",
-        description: "Помочь сделать сервис лучше",
-        defaultOn: true,
-    },
-]
+import { useThemeStore } from "~/stores/useThemeStore"
+import type { User as UserType } from "~/types/auth"
 
 export default function Settings() {
-    const [state, setState] = useState<Record<string, boolean>>(() =>
-        Object.fromEntries(toggles.map((t) => [t.id, t.defaultOn])),
-    )
-
-    const handleToggle = (id: string): void => {
-        setState((prev) => ({ ...prev, [id]: !prev[id] }))
-    }
+    const { user } = useOutletContext<{ user: UserType }>()
+    const { theme, setTheme } = useThemeStore()
 
     return (
-        <>
-            <PageHeader
-                title="Настройки"
-                description="Управляйте поведением приложения"
-            />
+        <div>
+            <PageHeader title="Настройки" description="Ваш профиль и параметры системы" />
 
-            <div className="divide-y divide-neutral-200 rounded-xl border border-neutral-200 dark:divide-neutral-900 dark:border-neutral-900">
-                {toggles.map((toggle) => {
-                    const isOn = state[toggle.id]
-                    return (
-                        <div
-                            key={toggle.id}
-                            className="flex items-center justify-between gap-6 px-5 py-4"
-                        >
-                            <div className="min-w-0">
-                                <p className="text-sm font-medium">{toggle.title}</p>
-                                <p className="text-xs text-neutral-500">
-                                    {toggle.description}
-                                </p>
+            <div className="flex flex-col gap-4 max-w-lg">
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium">Профиль</CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-4">
+                        <div className="flex items-center gap-4">
+                            <div className="flex size-14 items-center justify-center rounded-full bg-neutral-100 text-xl font-semibold text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+                                {user.name.charAt(0).toUpperCase()}
                             </div>
+                            <div>
+                                <p className="font-medium">{user.name}</p>
+                                <p className="text-sm text-neutral-500">{user.email}</p>
+                            </div>
+                        </div>
+                        <Separator />
+                        <div>
+                            <p className="text-xs text-neutral-400 uppercase tracking-wide mb-1">Роль</p>
+                            <div className="flex items-center gap-2">
+                                <User className="size-3.5 text-neutral-500" />
+                                <span className="text-sm font-medium">Менеджер</span>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium">Внешний вид</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="text-xs text-neutral-500 mb-3">Переключение темы интерфейса</p>
+                        <div className="flex gap-2">
                             <button
                                 type="button"
-                                role="switch"
-                                aria-checked={isOn}
-                                onClick={() => handleToggle(toggle.id)}
-                                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                                    isOn
-                                        ? "bg-[color:var(--color-accent)]"
-                                        : "bg-neutral-200 dark:bg-neutral-800"
+                                onClick={() => setTheme("light")}
+                                className={`flex flex-1 items-center justify-center gap-2 rounded-lg border py-3 text-sm font-medium transition-all ${
+                                    theme === "light"
+                                        ? "border-neutral-300 bg-neutral-200 text-neutral-800 dark:border-neutral-600 dark:bg-neutral-600 dark:text-neutral-100"
+                                        : "border-neutral-200 text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-700/40"
                                 }`}
                             >
-                                <span
-                                    className={`absolute top-0.5 size-5 rounded-full bg-white shadow transition-transform ${
-                                        isOn ? "translate-x-[22px]" : "translate-x-0.5"
-                                    }`}
-                                />
+                                <Sun className="size-4" />
+                                Светлая
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setTheme("dark")}
+                                className={`flex flex-1 items-center justify-center gap-2 rounded-lg border py-3 text-sm font-medium transition-all ${
+                                    theme === "dark"
+                                        ? "border-neutral-300 bg-neutral-200 text-neutral-800 dark:border-neutral-600 dark:bg-neutral-600 dark:text-neutral-100"
+                                        : "border-neutral-200 text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-700/40"
+                                }`}
+                            >
+                                <Moon className="size-4" />
+                                Тёмная
                             </button>
                         </div>
-                    )
-                })}
+                    </CardContent>
+                </Card>
             </div>
-        </>
+        </div>
     )
 }

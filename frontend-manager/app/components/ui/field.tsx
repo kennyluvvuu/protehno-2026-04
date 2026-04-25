@@ -1,5 +1,4 @@
 import type { ReactNode } from "react"
-import { Label } from "./label"
 
 interface FieldProps {
     label: string
@@ -8,15 +7,12 @@ interface FieldProps {
     children: ReactNode
 }
 
-export function Field({
-    label,
-    htmlFor,
-    error,
-    children,
-}: FieldProps): React.ReactElement {
+export function Field({ label, htmlFor, error, children }: FieldProps): React.ReactElement {
     return (
         <div className="flex flex-col gap-1.5">
-            <Label htmlFor={htmlFor}>{label}</Label>
+            <label htmlFor={htmlFor} className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                {label}
+            </label>
             {children}
             {error && (
                 <span role="alert" className="text-xs text-red-500">

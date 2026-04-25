@@ -82,7 +82,7 @@ export function Sidebar({ user, isCollapsed }: SidebarProps): React.ReactElement
                     {!isCollapsed && (
                         <div className="min-w-0 flex-1">
                             <p className="truncate text-xs font-medium">{user.name}</p>
-                            <p className="truncate text-[10px] text-neutral-400">Директор</p>
+                            <p className="truncate text-[10px] text-neutral-400">{user.name}</p>
                         </div>
                     )}
                     <button
