@@ -5,15 +5,17 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
-} from "react-router"
-import { Toaster } from "sonner"
+  redirect,
+} from "react-router";
+import { Toaster } from "sonner";
 
-import type { Route } from "./+types/root"
-import "./app.css"
-import { useThemeSync } from "./hooks/useThemeSync"
-import "./lib/axios-interceptors"
+import type { Route } from "./+types/root";
+import "./app.css";
+import { authApi } from "./axios/auth";
+import { useThemeSync } from "./hooks/useThemeSync";
+import "./lib/axios-interceptors";
 
-const themeScript = `(function(){try{var t=localStorage.getItem("theme");var d=t==="dark"||(!t&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d)document.documentElement.classList.add("dark");}catch(e){}})();`
+const themeScript = `(function(){try{var t=localStorage.getItem("theme");var d=t==="dark"||(!t&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d)document.documentElement.classList.add("dark");}catch(e){}})();`;
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -26,7 +28,29 @@ export const links: Route.LinksFunction = () => [
     rel: "stylesheet",
     href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap",
   },
-]
+];
+
+export async function loader({ request }: Route.LoaderArgs) {
+  try {
+    const cookie = request.headers.get("cookie") ?? undefined;
+    const user = await authApi.me(cookie);
+
+    if (
+      new URL(request.url).pathname === "/login" &&
+      user.role === "director"
+    ) {
+      throw redirect("/");
+    }
+
+    return { user };
+  } catch (error) {
+    if (error instanceof Response) {
+      throw error;
+    }
+
+    return { user: null };
+  }
+}
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -45,23 +69,26 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Scripts />
       </body>
     </html>
-  )
+  );
 }
 
 export default function App() {
-  useThemeSync()
-  return <Outlet />
+  useThemeSync();
+  return <Outlet />;
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
-  let message = "Ошибка"
-  let details = "Что-то пошло не так."
+  let message = "Ошибка";
+  let details = "Что-то пошло не так.";
 
   if (isRouteErrorResponse(error)) {
-    message = error.status === 404 ? "404" : "Ошибка"
-    details = error.status === 404 ? "Страница не найдена." : error.statusText || details
+    message = error.status === 404 ? "404" : "Ошибка";
+    details =
+      error.status === 404
+        ? "Страница не найдена."
+        : error.statusText || details;
   } else if (import.meta.env.DEV && error instanceof Error) {
-    details = error.message
+    details = error.message;
   }
 
   return (
@@ -71,5 +98,5 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
         <p className="mt-2 text-sm text-neutral-500">{details}</p>
       </div>
     </main>
-  )
+  );
 }

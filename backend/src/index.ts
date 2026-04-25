@@ -41,7 +41,25 @@ async function bootstrapServer() {
     );
 
     const app = new Elysia()
-        .use(cors())
+        .use(
+            cors({
+                origin: [
+                    "http://localhost",
+                    "http://manager.localhost",
+                    "http://director.localhost",
+                    "http://api.localhost",
+                    "http://localhost:80",
+                    "http://manager.localhost:80",
+                    "http://director.localhost:80",
+                    "http://api.localhost:80",
+                    "http://localhost:8088",
+                    "http://manager.localhost:8088",
+                    "http://director.localhost:8088",
+                    "http://api.localhost:8088",
+                ],
+                credentials: true,
+            }),
+        )
         .use(errorHandler)
         .get("/health", () => {
             return { status: "ok" };
