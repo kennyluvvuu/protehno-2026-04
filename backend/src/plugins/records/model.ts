@@ -14,7 +14,7 @@ export const recordTable = pgTable("records", {
     // --- OWNERSHIP ---
     // nullable: Mango records are not owned by a platform user
     userId: integer("user_id").references(() => userTable.id, {
-        onDelete: "cascade",
+        onDelete: "set null",
     }),
 
     // --- SOURCE ---
@@ -63,6 +63,7 @@ export const recordTable = pgTable("records", {
     callTo: text("call_to"),
     title: text("title"),
     durationSec: integer("duration_sec"), // filled by AI from audio analysis
+    qualityScore: integer("quality_score"), // AI-derived call quality score from 0 to 100
     // fileUri is now nullable — missed calls and pre-download Mango records have no file
     fileUri: text("file_uri"),
     transcription: text("transcription"),

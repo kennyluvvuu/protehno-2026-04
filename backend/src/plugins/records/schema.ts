@@ -37,6 +37,7 @@ export const getRecordSchema = createSelectSchema(recordTable).extend({
     status: aiRecordStatusSchema,
     tags: z.array(z.string()),
     checkboxes: aiCheckboxGroupsSchema.nullable(),
+    qualityScore: z.number().min(0).max(100).nullable().optional(),
     // New fields — all optional so existing frontend code is not affected
     source: z.enum(["manual", "mango"]).optional(),
     ingestionStatus: z
@@ -62,6 +63,7 @@ export const recordSummaryResultSchema = z.object({
     summary: z.string(),
     tags: z.array(z.string()),
     checkboxes: aiCheckboxGroupsSchema,
+    qualityScore: z.number().min(0).max(100).nullable(),
 });
 export type RecordSummaryResult = z.infer<typeof recordSummaryResultSchema>;
 
@@ -72,6 +74,7 @@ export const recordProcessingResultSchema = z.object({
     summary: z.string(),
     tags: z.array(z.string()),
     checkboxes: aiCheckboxGroupsSchema,
+    qualityScore: z.number().min(0).max(100).nullable(),
 });
 export type RecordProcessingResult = z.infer<
     typeof recordProcessingResultSchema

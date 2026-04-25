@@ -1,5 +1,5 @@
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { eq } from "drizzle-orm";
+import { and, count, eq, ne } from "drizzle-orm";
 import { userTable } from "./model";
 import {
     baseUserSchema,
@@ -7,7 +7,9 @@ import {
     CreateUser,
     GetUser,
     getUserSchema,
+    type UpdateUserPayload,
 } from "./schema";
+import type { UserRole } from "../guard";
 
 class UserService {
     constructor(private readonly db: NodePgDatabase) {
@@ -136,6 +138,96 @@ class UserService {
         }
 
         return UserService.withoutPasswordHash(updated);
+    }
+
+    async countDirectors(excludeUserId?: number): Promise<number> {
+        const conditions = [eq(userTable.role, "director")];
+
+        if (typeof excludeUserId === "number") {
+            conditions.push(ne(userTable.id, excludeUserId));
+        }
+
+        const [result] = await this.db
+            .select({ total: count() })
+            .from(userTable)
+            .where(and(...conditions));
+
+        return result?.total ?? 0;
+    }
+
+    async updateUser(
+        userId: number,
+        payload: UpdateUserPayload,
+    ): Promise<GetUser> {
+        const existingUser = await this.getUserById(userId);
+
+        if (!existingUser) {
+            throw new Error("User not found");
+        }
+
+        if (
+            existingUser.role === "director" &&
+            payload.role === "manager" &&
+            (await this.countDirectors(userId)) === 0
+        ) {
+            throw new Error("Cannot demote the last director");
+        }
+
+        try {
+            const [updated] = await this.db
+                .update(userTable)
+                .set({
+                    name: payload.name ?? existingUser.name,
+                    fio:
+                        payload.fio === undefined
+                            ? existingUser.fio
+                            : payload.fio,
+                    email: payload.email ?? existingUser.email,
+                    mangoUserId:
+                        payload.mangoUserId === undefined
+                            ? existingUser.mangoUserId
+                            : payload.mangoUserId,
+                    role: payload.role ?? existingUser.role,
+                })
+                .where(eq(userTable.id, userId))
+                .returning();
+
+            if (!updated) {
+                throw new Error("User not found");
+            }
+
+            return UserService.withoutPasswordHash(updated);
+        } catch (error: any) {
+            const errorCode = error?.code || error?.cause?.code;
+            if (errorCode === "23505") {
+                throw new Error("Email or Mango user id already in use");
+            }
+            throw error;
+        }
+    }
+
+    async deleteUser(userId: number): Promise<void> {
+        const existingUser = await this.getUserById(userId);
+
+        if (!existingUser) {
+            throw new Error("User not found");
+        }
+
+        if (
+            existingUser.role === "director" &&
+            (await this.countDirectors(userId)) === 0
+        ) {
+            throw new Error("Cannot delete the last director");
+        }
+
+        const deleted = await this.db
+            .delete(userTable)
+            .where(eq(userTable.id, userId))
+            .returning({ id: userTable.id });
+
+        if (!deleted.length) {
+            throw new Error("User not found");
+        }
     }
 }
 

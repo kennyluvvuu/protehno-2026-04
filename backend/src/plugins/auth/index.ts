@@ -53,7 +53,7 @@ const authPlugin = (userService: UserService) =>
                     });
                     throw new Error("Invalid credentials");
                 }
-                const token = await jwt.sign({ id: user.id });
+                const token = await jwt.sign({ id: user.id, role: user.role });
 
                 auth.value = token;
                 auth.httpOnly = true;
