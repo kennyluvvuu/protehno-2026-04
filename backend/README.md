@@ -1,194 +1,162 @@
-# JWT Users API (Bun + Elysia)
+# Backend API для фронтенда
 
-Базовый шаблон API для хакатона.
+Этот backend обслуживает пользователей и сущность `records` (записи звонков) из двух источников:
+- `manual` — ручная загрузка аудиофайла через `POST /records/upload`.
+- `mango` — автоматическая ингестация звонков из Mango Office webhook'ами.
 
-## Быстрый старт
+Ключевая идея: backend всегда хранит звонок как `record`, а AI-обработка запускается асинхронно, если у записи есть аудио.
 
-```bash
-bun install
-bun run dev
-```
+## Что делает backend
 
-## Для PostgreSQL
+- cookie-auth (`POST /login`, `POST /logout`);
+- управление пользователями (`/users/*`);
+- ручной upload аудио и фоновая AI-обработка;
+- хранение и выдача `records` со статусами обработки;
+- прием Mango webhook'ов:
+  - `POST /integrations/mango/events/summary`
+  - `POST /integrations/mango/events/record/added`
 
-```
-docker run -p 5432:5432 --rm -e POSTGRES_PASSWORD=USER -e POSTGRES_USER=USER --name pgtest postgres
-```
+## Базовый URL
 
-Сервер стартует на `http://localhost:3000`.
-
-## Переменные окружения
-
-Создай `.env` с такими полями:
-
-```env
-DATABASE_URL=postgres://USER:PASSWORD@localhost:5432
-JWT_SECRET=your-super-secret
-```
-
-## Что есть сейчас
-
-- Регистрация пользователя
-- Логин и выдача JWT
-- Получение списка пользователей
-- Получение пользователя по `id`
-- Health-check
-
-## Текущие endpoints
-
-### `GET /health`
-Проверка, что сервис жив.
-
-Пример ответа:
-
-```json
-{
-  "status": "ok"
-}
-```
-
----
-
-### `POST /users/register`
-Регистрация нового пользователя.
-
-Body:
-
-```json
-{
-  "name": "Alice",
-  "email": "alice@example.com",
-  "password": "qwerty123"
-}
-```
-
-Успешный ответ (`200`):
-
-```json
-{
-  "id": 1,
-  "name": "Alice",
-  "email": "alice@example.com"
-}
-```
-
-Ошибки:
-- `400/422` при невалидном body
-- `500` с сообщением `Email already in use`, если почта уже занята
-
----
-
-### `POST /login`
-Логин пользователя.
-
-Body:
-
-```json
-{
-  "email": "alice@example.com",
-  "password": "qwerty123"
-}
-```
-
-Успешный ответ (`200`):
-
-```json
-{
-  "id": 1,
-  "name": "Alice",
-  "email": "alice@example.com",
-  "token": "<jwt-token>"
-}
-```
-
-Ошибки:
-- `400/422` при невалидном body
-- `500` с сообщением `Invalid credentials`, если логин/пароль неверные
-
----
-
-### `GET /users`
-Получить список всех пользователей.
-
-Успешный ответ (`200`):
-
-```json
-[
-  {
-    "id": 1,
-    "name": "Alice",
-    "email": "alice@example.com"
-  }
-]
-```
-
----
-
-### `GET /users/:id`
-Получить одного пользователя по `id`.
-
-Пример: `GET /users/1`
-
-Успешный ответ (`200`):
-
-```json
-{
-  "id": 1,
-  "name": "Alice",
-  "email": "alice@example.com"
-}
-```
-
-Ошибки:
-- `404` с сообщением `User not found`, если пользователя нет
+Локально: `http://localhost:3000`
 
 ## Авторизация
 
-Сейчас JWT выдаётся на `/login`.
+После `POST /login` backend ставит `httpOnly` cookie `auth`.
+Для защищенных endpoint'ов используйте cookie (`credentials: "include"` / `withCredentials: true`), не Bearer token.
 
-Плагин guard уже есть в коде (`src/plugins/guard`), но защищённые роуты пока не подключены в `src/index.ts`.
+## Сущность records
 
-Когда появятся защищённые endpoint’ы, фронт будет отправлять токен так:
+`records` — единая таблица для ручных и Mango-звонков.
 
-```http
-Authorization: Bearer <jwt-token>
+### Базовые поля (используются фронтендом уже сейчас)
+
+- `id: number`
+- `userId: number | null`
+- `source: "manual" | "mango"`
+- `callTo: string | null`
+- `title: string | null`
+- `durationSec: number | null`
+- `fileUri: string | null`
+- `transcription: string | null`
+- `summary: string | null`
+- `status: "uploaded" | "queued" | "processing" | "done" | "failed" | "not_applicable"`
+- `error: string | null`
+- `startedAt: string | null`
+- `finishedAt: string | null`
+- `checkboxes: { tasks, promises, agreements } | null`
+- `tags: string[]`
+
+### Mango-поля (новые, опциональные)
+
+- `ingestionStatus: "ready" | "pending_audio" | "downloading" | "no_audio" | "failed"`
+- `ingestionError: string | null`
+- `mangoEntryId`, `mangoCallId`, `mangoRecordingId`, `mangoCommunicationId`
+- `mangoUserId`
+- `direction`, `callerNumber`, `calleeNumber`, `lineNumber`, `extension`
+- `callStartedAt`, `callAnsweredAt`, `callEndedAt`
+- `talkDurationSec`, `isMissed`, `hasAudio`
+
+## Как работает обработка records
+
+### 1) Manual upload flow
+
+1. `POST /records/upload` (`multipart/form-data`, поле `file`, опционально `title`, `callTo`).
+2. Backend сразу отвечает `202` с `{ id, userId, fileUri, status: "queued" }`.
+3. В фоне запускается AI (транскрипция + summary + tags + checkboxes).
+4. Фронтенд опрашивает `GET /records/:id`, пока статус не станет `done` или `failed`.
+
+### 2) Mango flow
+
+1. Mango шлет `summary` (метаданные звонка) → создается/обновляется `record` с `source="mango"`.
+2. Если звонок с записью, Mango шлет `record/added` → backend скачивает аудио, сохраняет в storage, переводит запись в `queued` и запускает AI.
+3. Если звонок пропущен (`isMissed=true`), аудио нет:
+   - `hasAudio=false`
+   - `ingestionStatus="no_audio"`
+   - `status="not_applicable"` (AI не запускается).
+
+## Статусы
+
+### AI status (`record.status`)
+
+- `uploaded` — запись создана, но AI еще не стартовал.
+- `queued` — запись поставлена в обработку.
+- `processing` — AI в работе.
+- `done` — AI завершен успешно.
+- `failed` — AI завершился ошибкой.
+- `not_applicable` — обработка неприменима (например, пропущенный звонок без аудио).
+
+### Ingestion status (`record.ingestionStatus`, в основном для Mango)
+
+- `ready` — аудио доступно.
+- `pending_audio` — ждём `record/added`.
+- `downloading` — идет скачивание из Mango.
+- `no_audio` — у звонка нет записи.
+- `failed` — ошибка на этапе ингестации.
+
+## Endpoint'ы
+
+### Публичные
+
+- `GET /health`
+- `POST /users/register`
+- `POST /login`
+- `POST /logout`
+
+### Защищенные (cookie `auth`)
+
+- `GET /users`
+- `GET /users/:id`
+- `GET /users/me`
+- `PATCH /users/me/mango-user-id`
+- `GET /users/mango/:mangoUserId`
+- `POST /records/upload`
+- `GET /records`
+- `GET /records/feed`
+- `GET /records/:id`
+- `GET /records/by-mango-entry/:entryId`
+
+### Webhook от Mango
+
+- `POST /integrations/mango/events/summary`
+- `POST /integrations/mango/events/record/added`
+
+Webhook'и проверяются по подписи (`vpbx_api_key`, `sign`, `json`) и отвечают быстро `200 { ok: true }`, а обработка идет асинхронно.
+
+## Важно про доступ к Mango records
+
+- `GET /records` возвращает записи только текущего пользователя (`userId = auth user id`), поэтому Mango записи с `userId = null` туда не попадают.
+- `GET /records/feed` возвращает единый фид: записи текущего пользователя (включая уже привязанные Mango) + Mango записи без владельца.
+- `GET /records/:id` содержит ownership-check: `200` только для записей владельца, иначе `403`.
+- `PATCH /users/me/mango-user-id` делает backfill: привязывает существующие `mango` записи с тем же `mangoUserId` к текущему пользователю.
+- `GET /records/by-mango-entry/:entryId` можно использовать для прямого поиска Mango записи по `entry_id` (без ownership-check).
+
+## Пример upload ответа
+
+```json
+{
+  "id": 12,
+  "userId": 1,
+  "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
+  "status": "queued",
+  "message": "Record uploaded and queued for async processing"
+}
 ```
 
-## Базовая структура проекта
+## Переменные окружения
 
-```text
-src/
-  index.ts                 # Точка входа, подключение роутов
-  database/
-    service.ts             # Подключение к Postgres через Drizzle
-  plugins/
-    auth/                  # /login + JWT
-    user/                  # /users/register, /users, /users/:id
-    guard/                 # Проверка Bearer token (подготовлено)
-    records/               # Заготовка для записей звонков (ещё не подключено)
-    errors/                # Глобальный обработчик ошибок
-```
+Обязательные для общей работы backend:
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `GROQ_API_KEY`
+- `GROQ_BASE_URL`
+- `GROQ_TRANSCRIPTION_MODEL`
+- `MISTRAL_API_KEY`
+- `MISTRAL_SUMMARY_MODEL`
 
-## Минимальные примеры для фронта
+Для Mango-интеграции:
+- `MANGO_VPBX_API_KEY`
+- `MANGO_VPBX_API_SALT`
+- `MANGO_BASE_URL` (по умолчанию `https://app.mango-office.ru`)
 
-Регистрация:
-
-```bash
-curl -X POST http://localhost:3000/users/register \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Alice","email":"alice@example.com","password":"qwerty123"}'
-```
-
-Логин:
-
-```bash
-curl -X POST http://localhost:3000/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"alice@example.com","password":"qwerty123"}'
-```
-
-Список пользователей:
-
-```bash
-curl http://localhost:3000/users
-```
+Пустые Mango переменные не роняют сервер на старте, но webhook/API-операции Mango будут падать при вызове.

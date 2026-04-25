@@ -1,13 +1,16 @@
 import Elysia, { NotFoundError } from "elysia";
 import { createUserSchema } from "./schema";
 import UserService from "./service";
-import { NodePgDatabase } from "drizzle-orm/node-postgres";
 import z from "zod";
 import { guardPlugin } from "../guard";
+import RecordService from "../records/service";
 
 const userLog = (...args: unknown[]) => console.log("[user]", ...args);
 
-export const userPlugin = (userService: UserService) =>
+export const userPlugin = (
+    userService: UserService,
+    recordService: RecordService,
+) =>
     new Elysia({ prefix: "/users" })
         .onRequest(({ request }) => {
             userLog(
@@ -79,4 +82,59 @@ export const userPlugin = (userService: UserService) =>
             });
 
             return await userService.getUserById(userId);
+        })
+        .patch(
+            "/me/mango-user-id",
+            async ({ body, userService, userId, request }) => {
+                userLog("set mango user id", {
+                    method: request.method,
+                    path: new URL(request.url).pathname,
+                    userId,
+                    mangoUserId: body.mangoUserId,
+                });
+
+                const user = await userService.setMangoUserId(
+                    userId,
+                    body.mangoUserId,
+                );
+
+                if (body.mangoUserId) {
+                    const linkedCount =
+                        await recordService.assignUnownedMangoRecordsToUser(
+                            body.mangoUserId,
+                            userId,
+                        );
+
+                    userLog("linked existing mango records", {
+                        userId,
+                        mangoUserId: body.mangoUserId,
+                        linkedCount,
+                    });
+                }
+
+                return user;
+            },
+            {
+                body: z.object({
+                    mangoUserId: z.number().int().positive().nullable(),
+                }),
+            },
+        )
+        .get("/mango/:mangoUserId", async ({ params, userService, set }) => {
+            const user = await userService.getUserByMangoUserId(
+                params.mangoUserId,
+            );
+
+            if (!user) {
+                set.status = 404;
+                return {
+                    message: "User not found",
+                };
+            }
+
+            return user;
+        }, {
+            params: z.object({
+                mangoUserId: z.coerce.number().int().positive(),
+            }),
         });
