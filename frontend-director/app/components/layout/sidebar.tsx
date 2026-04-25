@@ -2,6 +2,7 @@ import { BarChart2, List, LogOut, Settings, Users } from "lucide-react";
 import { NavLink, useNavigate, useRevalidator } from "react-router";
 import { toast } from "sonner";
 import { authApi } from "~/axios/auth";
+import { getApiErrorMessage } from "~/lib/api-error";
 import { cn } from "~/lib/utils";
 import { useAuthStore } from "~/stores/useAuthStore";
 import type { User } from "~/types/auth";
@@ -44,8 +45,8 @@ export function Sidebar({
       toast.success("Вы вышли из системы");
       await revalidate();
       navigate("/login", { replace: true });
-    } catch {
-      toast.error("Не удалось выйти");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Не удалось выйти"));
     }
   };
 

@@ -51,6 +51,7 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps): React.Rea
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Record | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const { data: records = [] } = useRecords();
   const { data: users = [] } = useUsers();

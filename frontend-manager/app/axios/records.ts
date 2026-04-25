@@ -1,4 +1,5 @@
 import { api } from "~/lib/axios-client"
+import { assertRequestCooldown } from "~/lib/request-guard"
 import type { Record, UploadResponse } from "~/types/record"
 
 export interface UploadPayload {
@@ -9,6 +10,7 @@ export interface UploadPayload {
 
 export const recordsApi = {
     upload: async (payload: UploadPayload): Promise<UploadResponse> => {
+        assertRequestCooldown("records:upload", 1500)
         const form = new FormData()
         form.append("file", payload.file)
         if (payload.title) form.append("title", payload.title)

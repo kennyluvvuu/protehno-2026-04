@@ -7,6 +7,7 @@ import { AuthShell } from "~/components/layout";
 import { Button } from "~/components/ui/button";
 import { Field } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
+import { getApiErrorMessage } from "~/lib/api-error";
 import { loginSchema, type LoginSchema } from "~/schemas/auth";
 import { useAuthStore } from "~/stores/useAuthStore";
 
@@ -32,17 +33,19 @@ export default function Login() {
 
   const onSubmit = async (data: LoginSchema): Promise<void> => {
     try {
-      const user = await authApi.login(data);
-      if (!user.role.includes("manager")) {
+      const nextUser = await authApi.login(data);
+
+      if (!nextUser.role.includes("manager")) {
         await authApi.logout();
         toast.error("Неверный email или пароль");
         return;
       }
-      setUser(user);
+
+      setUser(nextUser);
       toast.success("Добро пожаловать");
       window.location.replace("/calls");
-    } catch {
-      toast.error("Неверный email или пароль");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Не удалось выполнить вход"));
     }
   };
 
