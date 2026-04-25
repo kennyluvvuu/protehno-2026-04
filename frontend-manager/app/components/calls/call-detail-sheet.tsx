@@ -82,7 +82,7 @@ export function CallDetailSheet({ record, open, onClose, agentName }: CallDetail
                             </button>
                             <div className="flex flex-1 items-center gap-1.5">
                                 {Array.from({ length: 40 }).map((_, i) => (
-                                    <div key={i} className="w-0.5 rounded-full bg-neutral-300 dark:bg-neutral-600" style={{ height: `${8 + Math.random() * 20}px` }} />
+                                    <div key={i} className="w-0.5 rounded-full bg-neutral-300 dark:bg-neutral-600" style={{ height: `${8 + ((i * 7 + i * i * 3) % 20)}px` }} />
                                 ))}
                             </div>
                             <span className="text-xs text-neutral-400">{formatDuration(record.durationSec)}</span>

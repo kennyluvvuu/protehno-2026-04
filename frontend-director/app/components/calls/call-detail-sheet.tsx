@@ -128,7 +128,7 @@ export function CallDetailSheet({
                   <div
                     key={i}
                     className="w-0.5 rounded-full bg-neutral-300 dark:bg-neutral-600"
-                    style={{ height: `${8 + Math.random() * 20}px` }}
+                    style={{ height: `${8 + ((i * 7 + i * i * 3) % 20)}px` }}
                   />
                 ))}
               </div>

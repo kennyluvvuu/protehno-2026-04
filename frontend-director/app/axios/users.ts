@@ -1,4 +1,5 @@
 import { api } from "~/lib/axios-client";
+import { assertRequestCooldown } from "~/lib/request-guard";
 import type { User } from "~/types/auth";
 
 export interface CreateUserPayload {
@@ -30,21 +31,25 @@ export const usersApi = {
   },
 
   create: async (payload: CreateUserPayload): Promise<User> => {
+    assertRequestCooldown("users:create", 1000);
     const { data } = await api.post<User>("/users/register", payload);
     return data;
   },
 
   update: async (id: number, payload: UpdateUserPayload): Promise<User> => {
+    assertRequestCooldown(`users:update:${id}`, 800);
     const { data } = await api.patch<User>(`/users/${id}`, payload);
     return data;
   },
 
   remove: async (id: number): Promise<{ message: string }> => {
+    assertRequestCooldown(`users:remove:${id}`, 800);
     const { data } = await api.delete<{ message: string }>(`/users/${id}`);
     return data;
   },
 
   setOwnMangoUserId: async (mangoUserId: number | null): Promise<User> => {
+    assertRequestCooldown("users:set-own-mango-id", 800);
     const { data } = await api.patch<User>("/users/me/mango-user-id", {
       mangoUserId,
     });

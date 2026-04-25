@@ -17,6 +17,10 @@ const FALLBACK_USER: User = {
   mangoUserId: null,
 };
 
+export function shouldRevalidate() {
+  return false;
+}
+
 export async function loader(_: Route.LoaderArgs) {
   return { user: FALLBACK_USER };
 }

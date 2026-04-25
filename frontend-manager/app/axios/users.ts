@@ -1,4 +1,5 @@
 import { api } from "~/lib/axios-client"
+import { assertRequestCooldown } from "~/lib/request-guard"
 import type { User } from "~/types/auth"
 
 export interface CreateUserPayload {
@@ -18,6 +19,7 @@ export const usersApi = {
         return data
     },
     create: async (payload: CreateUserPayload): Promise<User> => {
+        assertRequestCooldown("users:create", 1000)
         const { data } = await api.post<User>("/users/register", payload)
         return data
     },
