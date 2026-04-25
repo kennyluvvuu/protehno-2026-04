@@ -14,7 +14,7 @@ export const createUserSchema = createInsertSchema(userTable)
     })
     .extend({
         password: z.string(),
-        role: z.array(userRoleSchema).nonempty(),
+        role: userRoleSchema,
         fio: fioSchema.optional().nullable(),
     });
 export type CreateUser = z.infer<typeof createUserSchema>;
@@ -24,7 +24,7 @@ export const getUserSchema = createSelectSchema(userTable)
         password_hash: true,
     })
     .extend({
-        role: z.array(userRoleSchema),
+        role: userRoleSchema,
         fio: fioSchema.nullable(),
     });
 export type GetUser = z.infer<typeof getUserSchema>;

@@ -31,7 +31,7 @@ export const userPlugin = (
 
                 const user = await userService.createUser({
                     ...body,
-                    role: ["manager"],
+                    role: "manager",
                 });
 
                 userLog("register success", {

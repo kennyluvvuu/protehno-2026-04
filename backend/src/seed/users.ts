@@ -25,7 +25,7 @@ export async function seedUsers(db: NodePgDatabase) {
 
     seedLog("users table is empty, creating initial director user", {
         email: DIRECTOR_EMAIL,
-        role: ["director"],
+        role: "director",
     });
 
     const passwordHash = await Bun.password.hash(DIRECTOR_PASSWORD);
@@ -36,7 +36,7 @@ export async function seedUsers(db: NodePgDatabase) {
             email: DIRECTOR_EMAIL,
             name: DIRECTOR_NAME,
             fio: DIRECTOR_FIO,
-            role: ["director"],
+            role: "director",
             mangoUserId: null,
             password_hash: passwordHash,
         })

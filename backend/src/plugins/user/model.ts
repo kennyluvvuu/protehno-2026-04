@@ -4,7 +4,7 @@ export const userTable = pgTable("users", {
     id: integer().primaryKey().generatedAlwaysAsIdentity(),
     name: text().notNull(),
     fio: text(),
-    role: text().array().notNull(),
+    role: text().notNull(),
     email: text().unique().notNull(),
     mangoUserId: integer("mango_user_id").unique(),
     password_hash: text().notNull(),
