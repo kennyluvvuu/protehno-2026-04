@@ -3,6 +3,7 @@ import {
   useStatsByAgent,
   useStatsOverview,
   useStatsWeekly,
+  type StatsPeriod,
 } from "~/hooks/useStats";
 import {
   Activity,
@@ -13,6 +14,13 @@ import {
   XCircle,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import { useOutletContext } from "react-router";
 import {
   Bar,
@@ -75,6 +83,17 @@ function formatWeekLabel(date: string): string {
   });
 }
 
+type AnalyticsPeriod = StatsPeriod;
+
+const ANALYTICS_PERIOD_OPTIONS: Array<{
+  value: AnalyticsPeriod;
+  label: string;
+}> = [
+  { value: "7d", label: "7 дней" },
+  { value: "14d", label: "14 дней" },
+  { value: "30d", label: "30 дней" },
+];
+
 function formatPercent(value: number | null): string {
   return value == null ? "—" : `${Math.round(value)}%`;
 }
@@ -82,6 +101,7 @@ function formatPercent(value: number | null): string {
 export default function Dashboard() {
   const { user } = useOutletContext<{ user: User }>();
   const [managersOpen, setManagersOpen] = useState(false);
+  const [analyticsPeriod, setAnalyticsPeriod] = useState<AnalyticsPeriod>("7d");
 
   const { data: health } = useQuery({
     queryKey: ["health"],
@@ -89,11 +109,11 @@ export default function Dashboard() {
     refetchInterval: 30_000,
   });
 
-  const { data: overview } = useStatsOverview();
+  const { data: overview } = useStatsOverview(analyticsPeriod);
 
-  const { data: weekly = [] } = useStatsWeekly();
+  const { data: weekly = [] } = useStatsWeekly(analyticsPeriod);
 
-  const { data: byAgent = [] } = useStatsByAgent();
+  const { data: byAgent = [] } = useStatsByAgent(analyticsPeriod);
 
   const totalCalls = overview?.totalRecords ?? 0;
   const doneCalls = overview?.doneRecords ?? 0;
@@ -140,7 +160,27 @@ export default function Dashboard() {
         title="Дэшборд"
         description="Общая аналитика платформы"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="w-full sm:w-[180px]">
+              <Select
+                value={analyticsPeriod}
+                onValueChange={(value) =>
+                  setAnalyticsPeriod(value as AnalyticsPeriod)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите период" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ANALYTICS_PERIOD_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {health?.status === "ok" ? (
               <Badge
                 variant="outline"
@@ -205,7 +245,7 @@ export default function Dashboard() {
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">
-              Звонки за неделю
+              Аналитика звонков
             </CardTitle>
           </CardHeader>
           <CardContent>

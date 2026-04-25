@@ -21,19 +21,29 @@ export interface StatsByAgentItem {
   avgQualityScore: number | null;
 }
 
+export type StatsPeriod = "7d" | "14d" | "30d";
+
 export const statsApi = {
-  getOverview: async (): Promise<StatsOverview> => {
-    const { data } = await api.get<StatsOverview>("/stats/overview");
+  getOverview: async (period: StatsPeriod = "7d"): Promise<StatsOverview> => {
+    const { data } = await api.get<StatsOverview>("/stats/overview", {
+      params: { period },
+    });
     return data;
   },
 
-  getWeekly: async (): Promise<WeeklyStatsItem[]> => {
-    const { data } = await api.get<WeeklyStatsItem[]>("/stats/weekly");
+  getWeekly: async (period: StatsPeriod = "7d"): Promise<WeeklyStatsItem[]> => {
+    const { data } = await api.get<WeeklyStatsItem[]>("/stats/weekly", {
+      params: { period },
+    });
     return data;
   },
 
-  getByAgent: async (): Promise<StatsByAgentItem[]> => {
-    const { data } = await api.get<StatsByAgentItem[]>("/stats/by-agent");
+  getByAgent: async (
+    period: StatsPeriod = "7d",
+  ): Promise<StatsByAgentItem[]> => {
+    const { data } = await api.get<StatsByAgentItem[]>("/stats/by-agent", {
+      params: { period },
+    });
     return data;
   },
 };
