@@ -1,3 +1,4 @@
+import Fuse from "fuse.js"
 import { FileAudio, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CallDetailSheet } from "~/components/calls/call-detail-sheet";
@@ -14,18 +15,15 @@ interface SearchModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const FIELDS = [
-  { key: "title" as const, label: "Название" },
-  { key: "callTo" as const, label: "Контрагент" },
-  { key: "transcription" as const, label: "Диалог" },
-  { key: "summary" as const, label: "Суммирование" },
-];
+type SearchRecord = Record & { agentName: string }
 
-function matchRecord(record: Record, q: string): string[] {
-  return FIELDS.filter(({ key }) => {
-    const value = String(record[key] ?? "").toLowerCase();
-    return value.includes(q);
-  }).map(({ label }) => label);
+function getDisplayTitle(record: Record): string {
+  return record.title ?? `Звонок #${record.id}`;
+}
+
+function getAgentName(record: Record, userMap: Map<number, string>): string | undefined {
+  if (record.userId == null) return undefined;
+  return userMap.get(record.userId);
 }
 
 function formatRecordDate(record: Record): string | null {
@@ -33,22 +31,23 @@ function formatRecordDate(record: Record): string | null {
   return date ? new Date(date).toLocaleDateString("ru-RU") : null;
 }
 
-function getAgentName(
-  record: Record,
-  userMap: Map<number, string>,
-): string | undefined {
-  if (record.userId == null) return undefined;
-  return userMap.get(record.userId);
+const FUSE_KEYS: { name: keyof SearchRecord; weight: number }[] = [
+  { name: "title", weight: 0.4 },
+  { name: "callTo", weight: 0.3 },
+  { name: "agentName", weight: 0.15 },
+  { name: "summary", weight: 0.1 },
+  { name: "transcription", weight: 0.05 },
+]
+
+const FIELD_LABELS: Partial<{ [K in keyof SearchRecord]: string }> = {
+  title: "Название",
+  callTo: "Контрагент",
+  agentName: "Менеджер",
+  summary: "Суммирование",
+  transcription: "Диалог",
 }
 
-function getDisplayTitle(record: Record): string {
-  return record.title ?? `Звонок #${record.id}`;
-}
-
-export function SearchModal({
-  open,
-  onOpenChange,
-}: SearchModalProps): React.ReactElement {
+export function SearchModal({ open, onOpenChange }: SearchModalProps): React.ReactElement {
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Record | null>(null);
@@ -61,32 +60,39 @@ export function SearchModal({
     [users],
   );
 
+  const searchRecords = useMemo<SearchRecord[]>(
+    () => records.map((r) => ({ ...r, agentName: getAgentName(r, userMap) ?? "" })),
+    [records, userMap],
+  )
+
+  const fuse = useMemo(
+    () => new Fuse(searchRecords, {
+      keys: FUSE_KEYS,
+      threshold: 0.4,
+      includeScore: true,
+      includeMatches: true,
+      minMatchCharLength: 2,
+      ignoreLocation: true,
+    }),
+    [searchRecords],
+  )
+
   useEffect(() => {
     if (!open) {
       setQuery("");
       return;
     }
-
     const timer = window.setTimeout(() => inputRef.current?.focus(), 10);
     return () => window.clearTimeout(timer);
   }, [open]);
 
   const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
+    const q = query.trim();
+    if (q.length < 2) return [];
+    return fuse.search(q).slice(0, 20)
+  }, [fuse, query]);
 
-    return records
-      .reduce<{ record: Record; matches: string[] }[]>((acc, record) => {
-        const matches = matchRecord(record, q);
-        if (matches.length > 0) {
-          acc.push({ record, matches });
-        }
-        return acc;
-      }, [])
-      .slice(0, 8);
-  }, [query, records]);
-
-  const hasQuery = query.trim().length > 0;
+  const hasQuery = query.trim().length >= 2;
 
   const handleResultClick = (record: Record): void => {
     onOpenChange(false);
@@ -109,7 +115,7 @@ export function SearchModal({
                 placeholder="Поиск по звонкам…"
                 className="h-10 pl-9 pr-10"
               />
-              {hasQuery && (
+              {query && (
                 <button
                   type="button"
                   onClick={() => setQuery("")}
@@ -125,7 +131,7 @@ export function SearchModal({
           <div className="overflow-y-auto p-3">
             {!hasQuery ? (
               <p className="py-20 text-center text-sm text-muted-foreground">
-                Начните вводить текст
+                {query.length === 1 ? "Введите ещё хотя бы один символ" : "Начните вводить текст"}
               </p>
             ) : results.length === 0 ? (
               <p className="py-20 text-center text-sm text-muted-foreground">
@@ -133,44 +139,49 @@ export function SearchModal({
               </p>
             ) : (
               <div className="flex flex-col gap-2">
-                {results.map(({ record, matches }) => (
-                  <button
-                    key={record.id}
-                    type="button"
-                    onClick={() => handleResultClick(record)}
-                    className="flex w-full items-start gap-3 rounded-lg border border-border bg-card px-3 py-2 text-left transition-colors hover:bg-accent"
-                  >
-                    <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                      <FileAudio className="size-4 text-muted-foreground" />
-                    </div>
+                <p className="mb-1 px-1 text-xs text-muted-foreground">
+                  Найдено: <strong>{results.length}</strong>
+                </p>
+                {results.map(({ item: record, matches }) => {
+                  const matchedFields = [...new Set(
+                    (matches ?? [])
+                      .map((m) => FIELD_LABELS[m.key as keyof SearchRecord])
+                      .filter(Boolean)
+                  )] as string[]
 
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
-                        {getDisplayTitle(record)}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {[
-                          record.callTo,
-                          getAgentName(record, userMap),
-                          formatRecordDate(record),
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {matches.slice(0, 3).map((label) => (
-                          <Badge
-                            key={label}
-                            variant="outline"
-                            className={cn("text-[10px]")}
-                          >
-                            {label}
-                          </Badge>
-                        ))}
+                  return (
+                    <button
+                      key={record.id}
+                      type="button"
+                      onClick={() => handleResultClick(record)}
+                      className="flex w-full items-start gap-3 rounded-lg border border-border bg-card px-3 py-2 text-left transition-colors hover:bg-accent"
+                    >
+                      <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                        <FileAudio className="size-4 text-muted-foreground" />
                       </div>
-                    </div>
-                  </button>
-                ))}
+
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">
+                          {getDisplayTitle(record)}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {[record.callTo, getAgentName(record, userMap), formatRecordDate(record)]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                        {matchedFields.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {matchedFields.slice(0, 3).map((label) => (
+                              <Badge key={label} variant="outline" className={cn("text-[10px]")}>
+                                {label}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>

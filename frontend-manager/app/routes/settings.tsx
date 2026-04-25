@@ -1,4 +1,4 @@
-import { Moon, Sun, User } from "lucide-react"
+import { Moon, Phone, Sun, User } from "lucide-react"
 import { useOutletContext } from "react-router"
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card"
 import { Separator } from "~/components/ui/separator"
@@ -6,9 +6,15 @@ import { PageHeader } from "~/components/layout"
 import { useThemeStore } from "~/stores/useThemeStore"
 import type { User as UserType } from "~/types/auth"
 
+function getDisplayName(user: UserType): string {
+    return user.fio?.trim() || user.name
+}
+
 export default function Settings() {
     const { user } = useOutletContext<{ user: UserType }>()
     const { theme, setTheme } = useThemeStore()
+
+    const displayName = getDisplayName(user)
 
     return (
         <div>
@@ -22,19 +28,48 @@ export default function Settings() {
                     <CardContent className="flex flex-col gap-4">
                         <div className="flex items-center gap-4">
                             <div className="flex size-14 items-center justify-center rounded-full bg-neutral-100 text-xl font-semibold text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
-                                {user.name.charAt(0).toUpperCase()}
+                                {displayName.charAt(0).toUpperCase()}
                             </div>
                             <div>
-                                <p className="font-medium">{user.name}</p>
+                                <p className="font-medium">{displayName}</p>
                                 <p className="text-sm text-neutral-500">{user.email}</p>
                             </div>
                         </div>
+
                         <Separator />
-                        <div>
-                            <p className="text-xs text-neutral-400 uppercase tracking-wide mb-1">Роль</p>
-                            <div className="flex items-center gap-2">
-                                <User className="size-3.5 text-neutral-500" />
-                                <span className="text-sm font-medium">Менеджер</span>
+
+                        <div className="flex flex-col gap-3">
+                            <div>
+                                <p className="mb-1 text-xs uppercase tracking-wide text-neutral-400">Логин</p>
+                                <div className="flex items-center gap-2">
+                                    <User className="size-3.5 text-neutral-500" />
+                                    <span className="text-sm font-medium">{user.name}</span>
+                                </div>
+                            </div>
+
+                            {user.fio && (
+                                <div>
+                                    <p className="mb-1 text-xs uppercase tracking-wide text-neutral-400">ФИО</p>
+                                    <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{user.fio}</p>
+                                </div>
+                            )}
+
+                            <div>
+                                <p className="mb-1 text-xs uppercase tracking-wide text-neutral-400">Роль</p>
+                                <div className="flex items-center gap-2">
+                                    <User className="size-3.5 text-neutral-500" />
+                                    <span className="text-sm font-medium">Менеджер</span>
+                                </div>
+                            </div>
+
+                            <div>
+                                <p className="mb-1 text-xs uppercase tracking-wide text-neutral-400">Mango ID</p>
+                                <div className="flex items-center gap-2">
+                                    <Phone className="size-3.5 text-neutral-500" />
+                                    <span className="text-sm font-medium">
+                                        {user.mangoUserId != null ? user.mangoUserId : "Не привязан"}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </CardContent>

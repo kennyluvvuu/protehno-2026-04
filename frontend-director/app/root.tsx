@@ -10,7 +10,6 @@ import { Toaster } from "sonner"
 
 import type { Route } from "./+types/root"
 import "./app.css"
-import { authApi } from "./axios/auth"
 import { useThemeSync } from "./hooks/useThemeSync"
 import "./lib/axios-interceptors"
 
@@ -28,15 +27,6 @@ export const links: Route.LinksFunction = () => [
     href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap",
   },
 ]
-
-export async function loader({ request }: Route.LoaderArgs) {
-  try {
-    const user = await authApi.me(request.headers.get("cookie") ?? undefined)
-    return { user }
-  } catch {
-    return { user: null }
-  }
-}
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (

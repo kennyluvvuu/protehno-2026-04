@@ -11,6 +11,8 @@ import {
   UserCog,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Pagination } from "~/components/ui/pagination";
+import { usePagination } from "~/hooks/usePagination";
 import { useForm } from "react-hook-form";
 import { useNavigate, useParams } from "react-router";
 import { z } from "zod";
@@ -26,6 +28,7 @@ import {
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
 import { Badge } from "~/components/ui/badge";
+import { Skeleton } from "~/components/ui/skeleton";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Field } from "~/components/ui/field";
@@ -197,6 +200,8 @@ export default function UserDetailPage() {
     [records, userId],
   );
 
+  const { page: recordsPage, totalPages: recordsTotalPages, pageItems: recordsPageItems, setPage: setRecordsPage } = usePagination(userRecords);
+
   const doneCount = userRecords.filter(
     (record) => record.status === "done",
   ).length;
@@ -219,8 +224,24 @@ export default function UserDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-32">
-        <Loader2 className="size-6 animate-spin text-neutral-400" />
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-3 mb-2">
+          <Skeleton className="size-9 rounded-md" />
+          <Skeleton className="size-11 rounded-full" />
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-4 w-28" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <Skeleton className="h-48 rounded-xl" />
+          <Skeleton className="h-48 rounded-xl lg:col-span-2" />
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Skeleton className="h-72 rounded-xl" />
+          <Skeleton className="h-72 rounded-xl" />
+        </div>
+        <Skeleton className="h-64 rounded-xl" />
       </div>
     );
   }
@@ -427,17 +448,17 @@ export default function UserDetailPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-red-100 dark:border-red-900/40">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-red-700 dark:text-red-400">
               Опасные действия
             </CardTitle>
           </CardHeader>
 
           <CardContent className="flex flex-col gap-4">
-            <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-700">
-              <p className="text-sm font-medium">Удаление пользователя</p>
-              <p className="mt-1 text-xs text-neutral-500">
+            <div className="rounded-lg border border-red-100 bg-red-50/40 p-4 dark:border-red-900/40 dark:bg-red-950/20">
+              <p className="text-sm font-medium text-red-800 dark:text-red-300">Удаление пользователя</p>
+              <p className="mt-1 text-xs text-red-700/70 dark:text-red-400/70">
                 Backend не даст удалить самого себя или последнего директора.
                 Записи пользователя сохранятся, а `userId` у них станет `null`.
               </p>
@@ -445,7 +466,7 @@ export default function UserDetailPage() {
               <Button
                 type="button"
                 variant="outline"
-                className="mt-4 gap-2 text-red-600 hover:text-red-700"
+                className="mt-4 gap-2 border-red-200 text-red-700 hover:border-red-300 hover:bg-red-50 hover:text-red-800 dark:border-red-800 dark:text-red-400 dark:hover:border-red-700 dark:hover:bg-red-950/40 dark:hover:text-red-300"
                 onClick={() => setDeleteOpen(true)}
                 disabled={deleteUser.isPending}
               >
@@ -496,7 +517,18 @@ export default function UserDetailPage() {
             </TableHeader>
 
             <TableBody>
-              {userRecords.length === 0 ? (
+              {recordsLoading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell><Skeleton className="h-4 w-36" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-12" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-10" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+                  </TableRow>
+                ))
+              ) : userRecords.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="py-14 text-center">
                     <div className="flex flex-col items-center gap-2">
@@ -506,7 +538,7 @@ export default function UserDetailPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                userRecords.map((record) => {
+                recordsPageItems.map((record) => {
                   const displayDuration = getDisplayDuration(record);
 
                   return (
@@ -546,9 +578,10 @@ export default function UserDetailPage() {
           </Table>
         </div>
 
-        <p className="mt-2 text-xs text-neutral-400">
-          {userRecords.length} записей
-        </p>
+        <div className="mt-3 flex items-center justify-between">
+          <p className="text-xs text-neutral-400">{userRecords.length} записей</p>
+          <Pagination page={recordsPage} totalPages={recordsTotalPages} onPageChange={setRecordsPage} />
+        </div>
       </div>
 
       <CallDetailSheet
@@ -575,7 +608,7 @@ export default function UserDetailPage() {
             <AlertDialogAction
               onClick={handleDelete}
               disabled={deleteUser.isPending}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+              className="bg-red-700/90 hover:bg-red-700 focus:ring-red-700"
             >
               {deleteUser.isPending ? (
                 <Loader2 className="size-4 animate-spin" />

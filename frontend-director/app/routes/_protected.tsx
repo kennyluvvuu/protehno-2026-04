@@ -24,14 +24,14 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 
     return (
         <QueryClientProvider client={queryClient}>
-            <div className="flex min-h-dvh bg-background">
+            <div className="flex h-dvh bg-background">
                 <Sidebar user={user as User} isCollapsed={isSidebarCollapsed} />
-                <div className="flex min-h-dvh flex-1 flex-col overflow-hidden">
+                <div className="flex min-h-0 h-dvh flex-1 flex-col overflow-hidden">
                     <LayoutHeader
                         isSidebarCollapsed={isSidebarCollapsed}
                         onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
                     />
-                    <main className="flex-1 overflow-y-auto">
+                    <main className="min-h-0 flex-1 overflow-y-auto">
                         <div className="mx-auto w-full max-w-7xl px-4 py-6">
                             <Outlet context={{ user }} />
                         </div>

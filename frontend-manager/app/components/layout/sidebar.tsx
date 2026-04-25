@@ -1,4 +1,4 @@
-import { BarChart2, List, LogOut, Settings, Upload } from "lucide-react"
+import { BarChart2, List, ListChecks, LogOut, Settings, Upload } from "lucide-react"
 import { NavLink, useNavigate, useRevalidator } from "react-router"
 import { toast } from "sonner"
 import { authApi } from "~/axios/auth"
@@ -14,6 +14,7 @@ interface SidebarProps {
 const nav = [
     { to: "/", label: "Дэшборд", icon: BarChart2, end: true },
     { to: "/calls", label: "Мои звонки", icon: List, end: false },
+    { to: "/tasks", label: "Задачи", icon: ListChecks, end: false },
     { to: "/upload", label: "Загрузить", icon: Upload, end: false },
     { to: "/settings", label: "Настройки", icon: Settings, end: false },
 ]
@@ -76,14 +77,22 @@ export function Sidebar({ user, isCollapsed }: SidebarProps): React.ReactElement
 
             <div className="border-t border-neutral-100 pt-3 dark:border-neutral-700">
                 <div className={cn("flex items-center px-2 py-1", isCollapsed ? "justify-center gap-1" : "gap-2")}>
-                    <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs font-semibold text-white dark:bg-neutral-700">
-                        {user.name.charAt(0).toUpperCase()}
-                    </div>
+                    <button
+                        type="button"
+                        onClick={() => navigate("/settings")}
+                        className="flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs font-semibold text-white dark:bg-neutral-700 hover:opacity-80 transition-opacity"
+                    >
+                        {(user.fio ?? user.name).charAt(0).toUpperCase()}
+                    </button>
                     {!isCollapsed && (
-                        <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-medium">{user.name}</p>
+                        <button
+                            type="button"
+                            onClick={() => navigate("/settings")}
+                            className="min-w-0 flex-1 text-left hover:opacity-70 transition-opacity"
+                        >
+                            <p className="truncate text-xs font-medium">{user.fio ?? user.name}</p>
                             <p className="truncate text-[10px] text-neutral-400">{user.email}</p>
-                        </div>
+                        </button>
                     )}
                     <button
                         type="button"
