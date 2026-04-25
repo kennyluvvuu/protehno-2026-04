@@ -47,9 +47,10 @@ interface CallDetailSheetProps {
     record: Record | null
     open: boolean
     onClose: () => void
+    agentName?: string
 }
 
-export function CallDetailSheet({ record, open, onClose }: CallDetailSheetProps) {
+export function CallDetailSheet({ record, open, onClose, agentName }: CallDetailSheetProps) {
     if (!record) return null
 
     const phone = record.callerNumber ?? record.calleeNumber ?? null
@@ -63,6 +64,14 @@ export function CallDetailSheet({ record, open, onClose }: CallDetailSheetProps)
                     <p className="text-sm text-neutral-500">
                         {[record.callTo, phone, date].filter(Boolean).join(" · ")}
                     </p>
+                    {agentName && (
+                        <div className="flex items-center gap-2 pt-1">
+                            <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-semibold text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+                                {agentName.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="text-sm text-neutral-600 dark:text-neutral-400">Менеджер: {agentName}</span>
+                        </div>
+                    )}
                 </SheetHeader>
 
                 <div className="mt-6 flex flex-col gap-5">

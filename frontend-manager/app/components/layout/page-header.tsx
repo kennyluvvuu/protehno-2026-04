@@ -6,11 +6,7 @@ interface PageHeaderProps {
     actions?: ReactNode
 }
 
-export function PageHeader({
-    title,
-    description,
-    actions,
-}: PageHeaderProps): React.ReactElement {
+export function PageHeader({ title, description, actions }: PageHeaderProps): React.ReactElement {
     return (
         <header className="mb-8 flex items-end justify-between gap-4">
             <div>
@@ -19,7 +15,7 @@ export function PageHeader({
                     <p className="mt-1 text-sm text-neutral-500">{description}</p>
                 )}
             </div>
-            {actions}
+            {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
         </header>
     )
 }
