@@ -2,23 +2,46 @@ import { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { and, count, eq, ne } from "drizzle-orm";
 import { userTable } from "./model";
 import {
-    baseUserSchema,
-    BaseUser,
+    CreateMangoLocalUser,
     CreateUser,
     GetUser,
     getUserSchema,
+    type ResetUserPasswordPayload,
     type UpdateUserPayload,
 } from "./schema";
 import type { UserRole } from "../guard";
+
+type MangoTelephonyNumber = {
+    number: string;
+    protocol?: string;
+    order?: number;
+    wait_sec?: number;
+    status?: string;
+};
+
+type UserRow = typeof userTable.$inferSelect;
 
 class UserService {
     constructor(private readonly db: NodePgDatabase) {
         this.db = db;
     }
 
-    static withoutPasswordHash(user: BaseUser): GetUser {
-        const parsedUser = baseUserSchema.parse(user);
-        const { password_hash: _, ...userWithoutPassword } = parsedUser;
+    private static normalizeMangoProfile(user: UserRow): UserRow {
+        return {
+            ...user,
+            mangoGroups: Array.isArray(user.mangoGroups)
+                ? user.mangoGroups
+                : null,
+            mangoSips: Array.isArray(user.mangoSips) ? user.mangoSips : null,
+            mangoTelephonyNumbers: Array.isArray(user.mangoTelephonyNumbers)
+                ? user.mangoTelephonyNumbers
+                : null,
+        };
+    }
+
+    static withoutPasswordHash(user: UserRow): GetUser {
+        const normalizedUser = UserService.normalizeMangoProfile(user);
+        const { password_hash: _, ...userWithoutPassword } = normalizedUser;
         return getUserSchema.parse(userWithoutPassword);
     }
 
@@ -47,6 +70,50 @@ class UserService {
             const errorCode = error?.code || error?.cause?.code;
             if (errorCode === "23505") {
                 throw new Error("Email already in use");
+            }
+            throw error;
+        }
+    }
+
+    async createUserByDirector(user: CreateMangoLocalUser): Promise<GetUser> {
+        try {
+            const passwordHash = await Bun.password.hash(user.password);
+
+            const [newUser] = await this.db
+                .insert(userTable)
+                .values({
+                    email: user.email,
+                    name: user.name,
+                    fio: user.fio ?? null,
+                    role: user.role,
+                    mangoUserId: user.mangoUserId,
+                    mangoLogin: user.mangoLogin ?? null,
+                    mangoExtension: user.mangoExtension ?? null,
+                    mangoPosition: user.mangoPosition ?? null,
+                    mangoDepartment: user.mangoDepartment ?? null,
+                    mangoMobile: user.mangoMobile ?? null,
+                    mangoOutgoingLine: user.mangoOutgoingLine ?? null,
+                    mangoAccessRoleId: user.mangoAccessRoleId ?? null,
+                    mangoGroups: user.mangoGroups ?? null,
+                    mangoSips: user.mangoSips ?? null,
+                    mangoTelephonyNumbers:
+                        (user.mangoTelephonyNumbers as
+                            | MangoTelephonyNumber[]
+                            | null
+                            | undefined) ?? null,
+                    password_hash: passwordHash,
+                })
+                .returning();
+
+            if (!newUser) {
+                throw new Error("Failed to create user");
+            }
+
+            return UserService.withoutPasswordHash(newUser);
+        } catch (error: any) {
+            const errorCode = error?.code || error?.cause?.code;
+            if (errorCode === "23505") {
+                throw new Error("Email or Mango user id already in use");
             }
             throw error;
         }
@@ -140,6 +207,31 @@ class UserService {
         return UserService.withoutPasswordHash(updated);
     }
 
+    async resetUserPassword(
+        userId: number,
+        payload: ResetUserPasswordPayload,
+    ): Promise<GetUser> {
+        const existingUser = await this.getUserById(userId);
+
+        if (!existingUser) {
+            throw new Error("User not found");
+        }
+
+        const passwordHash = await Bun.password.hash(payload.password);
+
+        const [updated] = await this.db
+            .update(userTable)
+            .set({ password_hash: passwordHash })
+            .where(eq(userTable.id, userId))
+            .returning();
+
+        if (!updated) {
+            throw new Error("User not found");
+        }
+
+        return UserService.withoutPasswordHash(updated);
+    }
+
     async countDirectors(excludeUserId?: number): Promise<number> {
         const conditions = [eq(userTable.role, "director")];
 
@@ -187,6 +279,46 @@ class UserService {
                         payload.mangoUserId === undefined
                             ? existingUser.mangoUserId
                             : payload.mangoUserId,
+                    mangoLogin:
+                        payload.mangoLogin === undefined
+                            ? existingUser.mangoLogin
+                            : payload.mangoLogin,
+                    mangoExtension:
+                        payload.mangoExtension === undefined
+                            ? existingUser.mangoExtension
+                            : payload.mangoExtension,
+                    mangoPosition:
+                        payload.mangoPosition === undefined
+                            ? existingUser.mangoPosition
+                            : payload.mangoPosition,
+                    mangoDepartment:
+                        payload.mangoDepartment === undefined
+                            ? existingUser.mangoDepartment
+                            : payload.mangoDepartment,
+                    mangoMobile:
+                        payload.mangoMobile === undefined
+                            ? existingUser.mangoMobile
+                            : payload.mangoMobile,
+                    mangoOutgoingLine:
+                        payload.mangoOutgoingLine === undefined
+                            ? existingUser.mangoOutgoingLine
+                            : payload.mangoOutgoingLine,
+                    mangoAccessRoleId:
+                        payload.mangoAccessRoleId === undefined
+                            ? existingUser.mangoAccessRoleId
+                            : payload.mangoAccessRoleId,
+                    mangoGroups:
+                        payload.mangoGroups === undefined
+                            ? existingUser.mangoGroups
+                            : payload.mangoGroups,
+                    mangoSips:
+                        payload.mangoSips === undefined
+                            ? existingUser.mangoSips
+                            : payload.mangoSips,
+                    mangoTelephonyNumbers:
+                        payload.mangoTelephonyNumbers === undefined
+                            ? existingUser.mangoTelephonyNumbers
+                            : payload.mangoTelephonyNumbers,
                     role: payload.role ?? existingUser.role,
                 })
                 .where(eq(userTable.id, userId))

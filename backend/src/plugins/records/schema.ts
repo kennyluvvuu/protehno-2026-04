@@ -29,6 +29,32 @@ export const aiCheckboxGroupsSchema = z.object({
 });
 export type AiCheckboxGroups = z.infer<typeof aiCheckboxGroupsSchema>;
 
+export const updateRecordCheckboxesSchema = t.Object({
+    checkboxes: t.Object({
+        tasks: t.Array(
+            t.Object({
+                label: t.String(),
+                checked: t.Boolean(),
+            }),
+        ),
+        promises: t.Array(
+            t.Object({
+                label: t.String(),
+                checked: t.Boolean(),
+            }),
+        ),
+        agreements: t.Array(
+            t.Object({
+                label: t.String(),
+                checked: t.Boolean(),
+            }),
+        ),
+    }),
+});
+export type UpdateRecordCheckboxes = Static<
+    typeof updateRecordCheckboxesSchema
+>;
+
 export const createRecordSchema = createInsertSchema(recordTable);
 export type CreateRecord = z.infer<typeof createRecordSchema>;
 
@@ -45,6 +71,7 @@ export const getRecordSchema = createSelectSchema(recordTable).extend({
         .optional(),
     mangoEntryId: z.string().nullable().optional(),
     mangoRecordingId: z.string().nullable().optional(),
+    mangoCommunicationId: z.string().nullable().optional(),
     mangoUserId: z.number().nullable().optional(),
     direction: z.string().nullable().optional(),
     callerNumber: z.string().nullable().optional(),
@@ -120,6 +147,7 @@ export type IngestionStatus = z.infer<typeof ingestionStatusSchema>;
 export const createMangoRecordSchema = z.object({
     mangoEntryId: z.string(),
     mangoCallId: z.string().optional(),
+    mangoCommunicationId: z.string().optional(),
     mangoUserId: z.number().int().positive().optional(),
     direction: z.enum(["inbound", "outbound", "unknown"]).optional(),
     callerNumber: z.string().optional(),

@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 import {
     type AiCheckboxGroups,
@@ -9,6 +9,7 @@ import {
     type CreateMangoRecord,
 } from "./schema";
 import { recordTable, tagsTable } from "./model";
+import type { IStorage } from "../../storage/interface";
 
 type RecordRow = typeof recordTable.$inferSelect;
 type TagRow = typeof tagsTable.$inferSelect;
@@ -24,7 +25,10 @@ type FinishRecordProcessingPayload = {
 };
 
 class RecordService {
-    constructor(private readonly db: NodePgDatabase) {
+    constructor(
+        private readonly db: NodePgDatabase,
+        private readonly storage?: IStorage,
+    ) {
         this.db = db;
     }
 
@@ -296,6 +300,30 @@ class RecordService {
         await this.db.delete(recordTable).where(eq(recordTable.id, recordId));
     }
 
+    async updateCheckboxes(
+        recordId: number,
+        checkboxes: AiCheckboxGroups,
+    ): Promise<GetRecord> {
+        const [updatedRecord] = await this.db
+            .update(recordTable)
+            .set({
+                checkboxes: sql`${JSON.stringify(checkboxes)}::jsonb`,
+            })
+            .where(eq(recordTable.id, recordId))
+            .returning();
+
+        if (!updatedRecord) {
+            throw new Error("Failed to update record checkboxes");
+        }
+
+        const current = await this.getRecordById(recordId);
+        if (!current) {
+            throw new Error("Record not found after updating checkboxes");
+        }
+
+        return current;
+    }
+
     // Find a record by Mango entry_id
     async findByMangoEntryId(
         mangoEntryId: string,
@@ -330,6 +358,7 @@ class RecordService {
                 status: isMissed ? "not_applicable" : "uploaded",
                 mangoEntryId: payload.mangoEntryId,
                 mangoCallId: payload.mangoCallId ?? null,
+                mangoCommunicationId: payload.mangoCommunicationId ?? null,
                 mangoUserId: payload.mangoUserId ?? null,
                 direction: payload.direction ?? "unknown",
                 callerNumber: payload.callerNumber ?? null,
@@ -405,6 +434,9 @@ class RecordService {
                 .update(recordTable)
                 .set({
                     mangoUserId: payload.mangoUserId ?? existing.mangoUserId,
+                    mangoCommunicationId:
+                        payload.mangoCommunicationId ??
+                        existing.mangoCommunicationId,
                     direction:
                         payload.direction ??
                         (existing.direction as
@@ -451,11 +483,25 @@ class RecordService {
             .where(eq(recordTable.id, recordId));
     }
 
+    async setMangoCommunicationId(
+        recordId: number,
+        mangoCommunicationId: string,
+    ): Promise<void> {
+        await this.db
+            .update(recordTable)
+            .set({ mangoCommunicationId })
+            .where(eq(recordTable.id, recordId));
+    }
+
     async setRecordOwner(recordId: number, userId: number): Promise<void> {
         await this.db
             .update(recordTable)
             .set({ userId })
             .where(eq(recordTable.id, recordId));
+    }
+
+    getStorage(): IStorage | undefined {
+        return this.storage;
     }
 
     async assignUnownedMangoRecordsToUser(
