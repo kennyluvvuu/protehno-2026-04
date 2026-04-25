@@ -1,47 +1,144 @@
-# JWT Users API (Bun + Elysia)
+# Backend API для фронтенда
 
-Базовый шаблон API для хакатона.
+Этот `backend` — HTTP API для приложения с пользователями и аудиозаписями звонков.
 
-## Быстрый старт
+Документация разделена на 2 части:
 
-```bash
-bun install
-bun run dev
+1. **Для человека** — коротко и понятно, как фронтенду работать с API.
+2. **Для AI-агентов** — структурированное описание контрактов endpoint'ов и правил интеграции.
+
+Главная цель этого README: помочь фронтенд-разработчику быстро подключиться к API и правильно обработать сценарий с асинхронной обработкой аудио.
+
+---
+
+# 1. Для человека
+
+## Что делает backend
+
+Сейчас backend умеет:
+
+- регистрировать пользователей;
+- логинить пользователей и устанавливать cookie-аутентификацию;
+- отдавать список пользователей;
+- отдавать пользователя по `id`;
+- принимать аудиозаписи;
+- принимать опциональные `title` и `callTo` при загрузке записи;
+- запускать AI-обработку записи в фоне;
+- отдавать список записей текущего пользователя;
+- отдавать одну запись по `id`;
+- сообщать статус обработки записи.
+
+Если говорить совсем коротко: фронтенд загружает аудио, backend сразу отвечает, а AI-результаты появляются позже. Поэтому после загрузки файла фронтенду нужно **опрашивать запись по `id`**, пока обработка не завершится.
+
+---
+
+## Базовый URL
+
+Локально backend запускается по адресу:
+
+`http://localhost:3000`
+
+---
+
+## Самый важный сценарий для фронтенда
+
+Обычный flow работы такой:
+
+1. Зарегистрировать пользователя через `POST /users/register`
+2. Выполнить логин через `POST /login`
+3. Получить от backend `httpOnly` cookie авторизации
+4. Для защищённых endpoint'ов отправлять запросы с cookie, а не с Bearer token
+5. Если фронтенд и backend на разных origin, включать отправку credentials
+6. Загрузить аудио через `POST /records/upload`
+7. Взять `id` записи из ответа
+8. Периодически вызывать `GET /records/:id`
+9. Остановить polling, когда статус станет `done` или `failed`
+
+---
+
+## Авторизация
+
+После логина backend выставляет `httpOnly` cookie `auth`.
+
+JWT действительно используется внутри backend, но для фронтенда контракт такой: токен живёт в cookie и не читается из JavaScript.
+
+Для защищённых запросов фронтенд не должен отправлять `Authorization: Bearer ...`.
+
+```/dev/null/http.txt#L1-3
+fetch("http://localhost:3000/records", {
+  credentials: "include"
+})
 ```
 
-## Для PostgreSQL
+Практически это значит, что во фронтенде лучше сделать единый API client, который автоматически включает отправку cookie в защищённых запросах.
 
-```
-docker run -p 5432:5432 --rm -e POSTGRES_PASSWORD=USER -e POSTGRES_USER=USER --name pgtest postgres
-```
+Если фронтенд использует `fetch`, нужен `credentials: "include"` для cross-origin запросов.
+Если используется `axios`, нужен `withCredentials: true`.
 
-Сервер стартует на `http://localhost:3000`.
+---
 
-## Переменные окружения
+## Как работает загрузка записей
 
-Создай `.env` с такими полями:
+### Общая логика
 
-```env
-DATABASE_URL=postgres://USER:PASSWORD@localhost:5432
-JWT_SECRET=your-super-secret
-```
+Сценарий загрузки записи асинхронный:
 
-## Что есть сейчас
+1. фронтенд отправляет аудиофайл;
+2. backend сохраняет запись;
+3. backend запускает распознавание и суммаризацию в фоне;
+4. backend сразу возвращает ответ клиенту;
+5. фронтенд опрашивает `GET /records/:id`, чтобы узнать, закончилась ли обработка.
 
-- Регистрация пользователя
-- Логин и выдача JWT
-- Получение списка пользователей
-- Получение пользователя по `id`
-- Health-check
+### Статусы записи
 
-## Текущие endpoints
+Используются следующие статусы:
 
-### `GET /health`
-Проверка, что сервис жив.
+- `uploaded` — файл загружен;
+- `queued` — загрузка принята, запись поставлена в очередь на фоновую обработку;
+- `processing` — AI-обработка идёт;
+- `done` — AI-обработка успешно завершена;
+- `failed` — AI-обработка завершилась ошибкой.
+
+Для UI удобно мыслить так:
+
+- `uploaded` / `queued` / `processing` → показывать состояние ожидания;
+- `done` → показывать результат;
+- `failed` → показывать ошибку.
+
+---
+
+## Какие данные появятся после AI-обработки
+
+После успешной обработки во фронтенде можно использовать:
+
+- `title` — заголовок звонка;
+- `callTo` — имя контрагента или собеседника;
+- `transcription` — текст расшифровки;
+- `summary` — краткую выжимку разговора;
+- `tags` — теги;
+- `checkboxes.tasks` — список задач;
+- `checkboxes.promises` — список обещаний;
+- `checkboxes.agreements` — список договорённостей.
+
+Важно про `title`:
+
+- `title` опционален при `POST /records/upload`;
+- если фронтенд передал `title`, backend сохранит его и AI будет использовать его только как контекст;
+- если фронтенд не передал `title`, AI может сгенерировать его во время обработки.
+
+Если обработка завершилась ошибкой, backend отдаст статус `failed` и строку в поле `error`.
+
+---
+
+## Endpoint'ы
+
+## `GET /health`
+
+Проверка, что backend жив.
 
 Пример ответа:
 
-```json
+```/dev/null/health.json#L1-3
 {
   "status": "ok"
 }
@@ -49,12 +146,13 @@ JWT_SECRET=your-super-secret
 
 ---
 
-### `POST /users/register`
+## `POST /users/register`
+
 Регистрация нового пользователя.
 
-Body:
+### Body
 
-```json
+```/dev/null/register-request.json#L1-5
 {
   "name": "Alice",
   "email": "alice@example.com",
@@ -62,9 +160,9 @@ Body:
 }
 ```
 
-Успешный ответ (`200`):
+### Успешный ответ
 
-```json
+```/dev/null/register-response.json#L1-5
 {
   "id": 1,
   "name": "Alice",
@@ -72,47 +170,53 @@ Body:
 }
 ```
 
-Ошибки:
-- `400/422` при невалидном body
-- `500` с сообщением `Email already in use`, если почта уже занята
+### Что важно для фронтенда
+
+- при успешном ответе пользователь создан;
+- если email уже используется, backend вернёт ошибку;
+- ошибки `400/422` нужно обрабатывать как ошибки валидации формы.
 
 ---
 
-### `POST /login`
+## `POST /login`
+
 Логин пользователя.
 
-Body:
+### Body
 
-```json
+```/dev/null/login-request.json#L1-4
 {
   "email": "alice@example.com",
   "password": "qwerty123"
 }
 ```
 
-Успешный ответ (`200`):
+### Успешный ответ
 
-```json
+```/dev/null/login-response.json#L1-5
 {
   "id": 1,
   "name": "Alice",
-  "email": "alice@example.com",
-  "token": "<jwt-token>"
+  "email": "alice@example.com"
 }
 ```
 
-Ошибки:
-- `400/422` при невалидном body
-- `500` с сообщением `Invalid credentials`, если логин/пароль неверные
+### Что важно для фронтенда
+
+- backend устанавливает `httpOnly` cookie `auth`;
+- фронтенд не должен пытаться читать токен из JavaScript;
+- защищённые запросы потом выполняются с cookie;
+- если логин или пароль неверные, backend вернёт ошибку.
 
 ---
 
-### `GET /users`
-Получить список всех пользователей.
+## `GET /users`
 
-Успешный ответ (`200`):
+Получить список пользователей.
 
-```json
+### Успешный ответ
+
+```/dev/null/users-list.json#L1-8
 [
   {
     "id": 1,
@@ -122,16 +226,17 @@ Body:
 ]
 ```
 
+Обычно этот endpoint нужен для справочников, списков или выбора пользователя в интерфейсе.
+
 ---
 
-### `GET /users/:id`
-Получить одного пользователя по `id`.
+## `GET /users/:id`
 
-Пример: `GET /users/1`
+Получить пользователя по `id`.
 
-Успешный ответ (`200`):
+### Пример ответа
 
-```json
+```/dev/null/user-by-id.json#L1-5
 {
   "id": 1,
   "name": "Alice",
@@ -139,56 +244,735 @@ Body:
 }
 ```
 
-Ошибки:
-- `404` с сообщением `User not found`, если пользователя нет
+Если пользователь не найден, backend вернёт ошибку.
 
-## Авторизация
+---
 
-Сейчас JWT выдаётся на `/login`.
+## `POST /records/upload`
 
-Плагин guard уже есть в коде (`src/plugins/guard`), но защищённые роуты пока не подключены в `src/index.ts`.
+Загрузить аудиозапись.
 
-Когда появятся защищённые endpoint’ы, фронт будет отправлять токен так:
+### Авторизация
 
-```http
-Authorization: Bearer <jwt-token>
+Требуется авторизация через `httpOnly` cookie `auth`.
+
+### Формат запроса
+
+Нужно отправлять `multipart/form-data`.
+
+Поля формы:
+
+- `file` — аудиофайл;
+- `title` — опциональный заголовок звонка;
+- `callTo` — опциональное имя контрагента или собеседника.
+
+### Что делает backend
+
+- принимает файл;
+- может принять опциональные `title` и `callTo`;
+- сохраняет запись;
+- запускает AI-обработку в фоне;
+- сразу возвращает ответ.
+
+### Пример успешного ответа
+
+Успешный статус ответа: `202 Accepted`
+
+```/dev/null/upload-response.json#L1-7
+{
+  "id": 12,
+  "userId": 1,
+  "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
+  "status": "queued",
+  "message": "Record uploaded and queued for async processing"
+}
 ```
 
-## Базовая структура проекта
+### Что важно для фронтенда
 
-```text
-src/
-  index.ts                 # Точка входа, подключение роутов
-  database/
-    service.ts             # Подключение к Postgres через Drizzle
-  plugins/
-    auth/                  # /login + JWT
-    user/                  # /users/register, /users, /users/:id
-    guard/                 # Проверка Bearer token (подготовлено)
-    records/               # Заготовка для записей звонков (ещё не подключено)
-    errors/                # Глобальный обработчик ошибок
+- это **не финальный AI-результат**;
+- в ответе upload endpoint нет `summary`, `transcription`, `tags`, `checkboxes` и финального `title`;
+- после ответа нужно взять `id` записи;
+- дальше нужно опрашивать `GET /records/:id`;
+- если у фронтенда уже есть заголовок звонка, его можно передать в `title`;
+- если у фронтенда уже известно имя контрагента, его можно передать в `callTo`;
+- UI лучше сразу переводить в состояние “обрабатываем запись”.
+
+---
+
+## `GET /records`
+
+Получить список записей текущего пользователя.
+
+### Авторизация
+
+Требуется авторизация через `httpOnly` cookie `auth`.
+
+### Пример ответа
+
+```/dev/null/records-list.json#L1-17
+[
+  {
+    "id": 12,
+    "userId": 1,
+    "callTo": "ООО Ромашка",
+    "title": "Первичный звонок по сделке",
+    "durationSec": null,
+    "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
+    "transcription": null,
+    "summary": null,
+    "status": "processing",
+    "error": null,
+    "startedAt": null,
+    "finishedAt": null,
+    "checkboxes": null,
+    "tags": []
+  }
+]
 ```
 
-## Минимальные примеры для фронта
+### Что важно для фронтенда
 
-Регистрация:
+Этот endpoint полезен для:
 
-```bash
-curl -X POST http://localhost:3000/users/register \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Alice","email":"alice@example.com","password":"qwerty123"}'
+- страницы истории записей;
+- восстановления состояния после перезагрузки страницы;
+- общего списка звонков пользователя.
+
+---
+
+## `GET /records/:id`
+
+Получить запись по `id`.
+
+### Авторизация
+
+Требуется авторизация через `httpOnly` cookie `auth`.
+
+### Зачем нужен этот endpoint
+
+Это главный endpoint после загрузки файла.
+
+Через него фронтенд получает:
+
+- текущий статус обработки;
+- `title`;
+- `callTo`;
+- `transcription`;
+- `summary`;
+- `tags`;
+- `checkboxes`;
+- `error`, если обработка завершилась неуспешно.
+
+### Пример ответа во время обработки
+
+```/dev/null/record-processing.json#L1-15
+{
+  "id": 12,
+  "userId": 1,
+  "callTo": "ООО Ромашка",
+  "title": "Первичный звонок по сделке",
+  "durationSec": null,
+  "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
+  "transcription": null,
+  "summary": null,
+  "status": "processing",
+  "error": null,
+  "startedAt": "2025-01-10T12:00:00.000Z",
+  "finishedAt": null,
+  "checkboxes": null,
+  "tags": []
+}
 ```
 
-Логин:
+### Пример ответа после успешной обработки
 
-```bash
-curl -X POST http://localhost:3000/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"alice@example.com","password":"qwerty123"}'
+```/dev/null/record-done.json#L1-30
+{
+  "id": 12,
+  "userId": 1,
+  "callTo": "ООО Ромашка",
+  "title": "Первичный звонок по сделке",
+  "durationSec": 98,
+  "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
+  "transcription": "Текст расшифровки звонка",
+  "summary": "Краткая выжимка разговора",
+  "status": "done",
+  "error": null,
+  "startedAt": "2025-01-10T12:00:00.000Z",
+  "finishedAt": "2025-01-10T12:01:45.000Z",
+  "checkboxes": {
+    "tasks": [
+      {
+        "label": "Подготовить коммерческое предложение",
+        "checked": false
+      }
+    ],
+    "promises": [
+      {
+        "label": "Отправить материалы на почту",
+        "checked": false
+      }
+    ],
+    "agreements": [
+      {
+        "label": "Созвониться повторно на следующей неделе",
+        "checked": false
+      }
+    ]
+  },
+  "tags": ["сделка", "follow-up"]
+}
 ```
 
-Список пользователей:
+### Пример ответа при ошибке обработки
 
-```bash
-curl http://localhost:3000/users
+```/dev/null/record-failed.json#L1-15
+{
+  "id": 12,
+  "userId": 1,
+  "callTo": "ООО Ромашка",
+  "title": "Первичный звонок по сделке",
+  "durationSec": null,
+  "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
+  "transcription": null,
+  "summary": null,
+  "status": "failed",
+  "error": "AI processing failed",
+  "startedAt": "2025-01-10T12:00:00.000Z",
+  "finishedAt": "2025-01-10T12:00:05.000Z",
+  "checkboxes": null,
+  "tags": []
+}
 ```
+
+### Что важно для фронтенда
+
+- пока статус не финальный, UI должен показывать загрузку или промежуточное состояние;
+- при `done` можно отображать `title`, `callTo` и результаты AI-обработки;
+- при `failed` нужно показать ошибку и предусмотреть UX для повторной попытки, если это нужно на уровне интерфейса.
+
+---
+
+## Что показывать в интерфейсе
+
+### Пока запись обрабатывается
+
+Можно показывать:
+
+- индикатор загрузки;
+- статус обработки;
+- скелетон или заглушки вместо результатов.
+
+### Когда запись готова
+
+Можно показывать:
+
+- `title`;
+- `callTo`;
+- `transcription`;
+- `summary`;
+- `tags`;
+- блоки из `checkboxes.tasks`, `checkboxes.promises`, `checkboxes.agreements`.
+
+### Когда произошла ошибка
+
+Нужно показать:
+
+- понятное сообщение пользователю;
+- при необходимости текст из поля `error`.
+
+---
+
+## Рекомендованный polling
+
+После `POST /records/upload`:
+
+1. взять `id` из ответа;
+2. каждые 2–5 секунд вызывать `GET /records/:id`;
+3. остановить polling при `done` или `failed`.
+
+Если на странице есть список записей, можно дополнительно обновлять `GET /records`.
+
+---
+
+## Минимально необходимое для локального запуска backend
+
+Если фронтендеру нужно поднять backend локально, достаточно следующего.
+
+### Установка зависимостей
+
+```/dev/null/install.sh#L1-1
+bun install
+```
+
+### PostgreSQL через Docker
+
+```/dev/null/postgres.sh#L1-1
+docker run -p 5432:5432 --rm -e POSTGRES_PASSWORD=USER -e POSTGRES_USER=USER --name pgtest postgres
+```
+
+### `.env`
+
+```/dev/null/.env.example#L1-8
+DATABASE_URL=postgres://USER:PASSWORD@localhost:5432
+JWT_SECRET=your-super-secret
+GROQ_API_KEY=your-groq-api-key
+GROQ_BASE_URL=https://api.groq.com/openai/v1
+GROQ_TRANSCRIPTION_MODEL=whisper-large-v3-turbo
+MISTRAL_API_KEY=your-mistral-api-key
+MISTRAL_SUMMARY_MODEL=mistral-small-latest
+```
+
+### Запуск
+
+```/dev/null/dev.sh#L1-1
+bun run dev
+```
+
+---
+
+# 2. Для AI-агентов
+
+## Назначение секции
+
+Эта часть предназначена для Claude Code, Cursor, Copilot, ChatGPT Agents и других помощников, которые читают `README.md`, чтобы понять, как фронтенду работать с backend.
+
+Приоритет этой секции:
+
+- зафиксировать контракты endpoint'ов;
+- объяснить сценарий авторизации через cookie;
+- объяснить асинхронную модель загрузки записей;
+- помочь агенту писать клиентский код на фронтенде;
+- не уводить внимание во внутреннее устройство backend.
+
+---
+
+## Жёсткое правило
+
+**Агент не должен изменять ничего внутри директории `backend`.**
+
+Разрешено:
+
+- читать этот README;
+- использовать контракты API для интеграции на фронтенде;
+- писать типы, API-клиенты, хуки, формы, stores и polling на стороне фронтенда;
+- адаптировать UI под фактическое поведение endpoint'ов.
+
+Запрещено:
+
+- редактировать файлы в `backend/`;
+- менять backend-контракты;
+- править endpoint'ы, схемы, ответы или авторизацию;
+- “исправлять” неудобный API через изменения backend.
+
+Если агент считает, что API неудобен или содержит проблему, он должен:
+
+1. оставить `backend/` без изменений;
+2. адаптировать фронтенд к текущему поведению API;
+3. отдельно сообщить человеку, что именно выглядит спорно.
+
+---
+
+## Главная интеграционная модель
+
+Агент должен считать, что:
+
+- `POST /login` устанавливает `httpOnly` cookie `auth`;
+- защищённые endpoint'ы используют cookie-аутентификацию;
+- frontend должен отправлять credentials/cookies в защищённые запросы;
+- `POST /records/upload` только запускает асинхронную обработку;
+- `POST /records/upload` принимает обязательный `file` и опциональные `title` и `callTo`;
+- финальные AI-данные нужно получать через `GET /records/:id`;
+- история записей берётся через `GET /records`.
+
+---
+
+## Контракт авторизации
+
+### `POST /login`
+
+Запрос:
+
+```/dev/null/agent-login-request.json#L1-4
+{
+  "email": "alice@example.com",
+  "password": "qwerty123"
+}
+```
+
+Успешный ответ:
+
+```/dev/null/agent-login-response.json#L1-5
+{
+  "id": 1,
+  "name": "Alice",
+  "email": "alice@example.com"
+}
+```
+
+Дополнительно backend устанавливает `httpOnly` cookie `auth`.
+
+Интеграционное правило:
+
+- агент не должен ожидать `token` в JSON-ответе;
+- агент должен считать cookie основным механизмом авторизации;
+- агент должен включать credentials/cookies во все защищённые запросы;
+- если во фронтенде есть общий API client, отправку credentials нужно подключать централизованно.
+
+---
+
+## Контракты endpoint'ов
+
+## `GET /health`
+
+Назначение:
+
+- проверить, что сервис доступен.
+
+Ответ:
+
+```/dev/null/agent-health.json#L1-3
+{
+  "status": "ok"
+}
+```
+
+Использование на фронтенде:
+
+- healthcheck;
+- проверка доступности локального backend;
+- диагностика проблем интеграции.
+
+---
+
+## `POST /users/register`
+
+Назначение:
+
+- создать пользователя.
+
+Body:
+
+```/dev/null/agent-register-request.json#L1-5
+{
+  "name": "Alice",
+  "email": "alice@example.com",
+  "password": "qwerty123"
+}
+```
+
+Успешный ответ:
+
+```/dev/null/agent-register-response.json#L1-5
+{
+  "id": 1,
+  "name": "Alice",
+  "email": "alice@example.com"
+}
+```
+
+Интерпретация для агента:
+
+- `400/422` трактовать как ошибки валидации;
+- сообщение `Email already in use` трактовать как занятый email;
+- после успешной регистрации можно вести пользователя на логин или запускать следующий шаг сценария, если это предусмотрено фронтендом.
+
+---
+
+## `POST /login`
+
+Назначение:
+
+- аутентифицировать пользователя.
+
+Body:
+
+```/dev/null/agent-login2-request.json#L1-4
+{
+  "email": "alice@example.com",
+  "password": "qwerty123"
+}
+```
+
+Успешный ответ:
+
+```/dev/null/agent-login2-response.json#L1-6
+{
+  "id": 1,
+  "name": "Alice",
+  "email": "alice@example.com",
+  "token": "<jwt-token>"
+}
+```
+
+Интерпретация для агента:
+
+- не ожидать `token` в response body;
+- считать, что после успешного логина backend выставляет `httpOnly` cookie `auth`;
+- при необходимости сохранить пользователя в session store;
+- сообщение `Invalid credentials` показывать как ошибку входа.
+
+---
+
+## `GET /users`
+
+Назначение:
+
+- вернуть массив пользователей.
+
+Ответ:
+
+```/dev/null/agent-users-response.json#L1-8
+[
+  {
+    "id": 1,
+    "name": "Alice",
+    "email": "alice@example.com"
+  }
+]
+```
+
+Интерпретация для агента:
+
+- endpoint защищён через cookie-аутентификацию;
+- endpoint возвращает массив;
+- тип можно моделировать как `Array<{ id: number; name: string; email: string }>`.
+
+---
+
+## `GET /users/:id`
+
+Назначение:
+
+- вернуть одного пользователя по идентификатору.
+
+Ответ:
+
+```/dev/null/agent-user-id-response.json#L1-5
+{
+  "id": 1,
+  "name": "Alice",
+  "email": "alice@example.com"
+}
+```
+
+Интерпретация для агента:
+
+- при ошибке `User not found` нужно показать состояние “не найдено”, fallback-экран или redirect — в зависимости от UX фронтенда.
+
+---
+
+## `POST /records/upload`
+
+Назначение:
+
+- загрузить аудиофайл и инициировать AI-обработку.
+
+Авторизация:
+
+- требуется `httpOnly` cookie `auth`.
+
+Формат:
+
+- `multipart/form-data`
+- поле файла: `file`
+- опциональное текстовое поле: `title`
+- опциональное текстовое поле: `callTo`
+
+Успешный ответ:
+
+```/dev/null/agent-upload-response.json#L1-7
+{
+  "id": 12,
+  "userId": 1,
+  "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
+  "status": "queued",
+  "message": "Record uploaded and queued for async processing"
+}
+```
+
+Ключевая интерпретация для агента:
+
+- этот endpoint **не** возвращает финальный AI-результат;
+- `id` из ответа нужно использовать для последующего `GET /records/:id`;
+- интерфейс должен сразу переходить в состояние ожидания;
+- агент не должен ожидать `summary`, `transcription`, `title`, `tags` или `checkboxes` в ответе upload endpoint;
+- если `title` был передан при upload, его нужно трактовать как уже известный заголовок звонка;
+- если `title` не был передан, он может появиться позже в `GET /records/:id` как результат AI-обработки;
+- `callTo` нужно трактовать как имя контрагента или собеседника.
+
+---
+
+## `GET /records`
+
+Назначение:
+
+- вернуть список записей текущего пользователя.
+
+Авторизация:
+
+- требуется `httpOnly` cookie `auth`.
+
+Ответ:
+
+```/dev/null/agent-records-response.json#L1-17
+[
+  {
+    "id": 12,
+    "userId": 1,
+    "callTo": "ООО Ромашка",
+    "title": "Первичный звонок по сделке",
+    "durationSec": null,
+    "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
+    "transcription": null,
+    "summary": null,
+    "status": "processing",
+    "error": null,
+    "startedAt": null,
+    "finishedAt": null,
+    "checkboxes": null,
+    "tags": []
+  }
+]
+```
+
+Интерпретация для агента:
+
+- использовать для экрана истории или списка записей;
+- после reload страницы этот endpoint помогает восстановить текущее состояние;
+- массив может содержать как завершённые, так и ещё обрабатывающиеся записи.
+
+---
+
+## `GET /records/:id`
+
+Назначение:
+
+- вернуть полное состояние одной записи.
+
+Авторизация:
+
+- требуется `httpOnly` cookie `auth`.
+
+Во время обработки ответ может выглядеть так:
+
+```/dev/null/agent-record-processing.json#L1-15
+{
+  "id": 12,
+  "userId": 1,
+  "callTo": "ООО Ромашка",
+  "title": "Первичный звонок по сделке",
+  "durationSec": null,
+  "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
+  "transcription": null,
+  "summary": null,
+  "status": "processing",
+  "error": null,
+  "startedAt": "2025-01-10T12:00:00.000Z",
+  "finishedAt": null,
+  "checkboxes": null,
+  "tags": []
+}
+```
+
+После успешной обработки:
+
+```/dev/null/agent-record-done.json#L1-30
+{
+  "id": 12,
+  "userId": 1,
+  "callTo": "ООО Ромашка",
+  "title": "Первичный звонок по сделке",
+  "durationSec": 98,
+  "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
+  "transcription": "Текст расшифровки звонка",
+  "summary": "Краткая выжимка разговора",
+  "status": "done",
+  "error": null,
+  "startedAt": "2025-01-10T12:00:00.000Z",
+  "finishedAt": "2025-01-10T12:01:45.000Z",
+  "checkboxes": {
+    "tasks": [
+      {
+        "label": "Подготовить коммерческое предложение",
+        "checked": false
+      }
+    ],
+    "promises": [
+      {
+        "label": "Отправить материалы на почту",
+        "checked": false
+      }
+    ],
+    "agreements": [
+      {
+        "label": "Созвониться повторно на следующей неделе",
+        "checked": false
+      }
+    ]
+  },
+  "tags": ["сделка", "follow-up"]
+}
+```
+
+При ошибке обработки:
+
+```/dev/null/agent-record-failed.json#L1-15
+{
+  "id": 12,
+  "userId": 1,
+  "callTo": "ООО Ромашка",
+  "title": "Первичный звонок по сделке",
+  "durationSec": null,
+  "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
+  "transcription": null,
+  "summary": null,
+  "status": "failed",
+  "error": "AI processing failed",
+  "startedAt": "2025-01-10T12:00:00.000Z",
+  "finishedAt": "2025-01-10T12:00:05.000Z",
+  "checkboxes": null,
+  "tags": []
+}
+```
+
+Ключевая интерпретация для агента:
+
+- это основной endpoint для страницы детали записи;
+- именно он даёт финальные AI-данные;
+- polling должен останавливаться на `done` или `failed`;
+- при `done` нужно отображать `title`, `callTo`, `transcription`, `summary`, `tags`, `checkboxes`;
+- при `failed` нужно отображать ошибку из `error`;
+- `title` может быть либо переданным пользователем при upload, либо сгенерированным AI, если при upload он отсутствовал.
+
+---
+
+## Рекомендации агенту по фронтенд-интеграции
+
+Агенту стоит:
+
+- создать отдельные типы для:
+  - `User`
+  - `LoginResponse`
+  - `RecordListItem`
+  - `RecordDetails`
+  - `RecordStatus`
+  - `UploadRecordPayload`
+- вынести API-вызовы в отдельный клиент;
+- централизованно включить отправку credentials/cookies;
+- реализовать polling как отдельный hook или utility;
+- проектировать UI с учётом того, что upload и финальный результат — это два разных этапа.
+
+---
+
+## Что агенту не нужно делать
+
+Агенту не нужно:
+
+- описывать внутренние backend-плагины;
+- рефакторить backend-архитектуру;
+- лезть в миграции, схемы БД или серверную реализацию;
+- менять директорию `backend`.
+
+Этот README должен рассматриваться как интеграционный контракт для фронтенда, а не как приглашение менять серверную часть.
