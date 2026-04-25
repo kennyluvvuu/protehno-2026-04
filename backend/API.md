@@ -20,8 +20,8 @@
 Request:
 ```json
 {
-  "email": "alice@example.com",
-  "password": "qwerty123"
+  "email": "director@example.com",
+  "password": "director123"
 }
 ```
 
@@ -29,11 +29,11 @@ Success `200`:
 ```json
 {
   "id": 1,
-  "name": "Alice",
-  "fio": "Иванов Иван Иванович",
-  "role": ["manager"],
-  "email": "alice@example.com",
-  "mangoUserId": 12345
+  "name": "director",
+  "fio": "Директор Демо",
+  "role": ["director"],
+  "email": "director@example.com",
+  "mangoUserId": null
 }
 ```
 
@@ -81,9 +81,10 @@ Request:
 
 Notes:
 - `fio` optional.
-- `role` required (`"director"` and/or `"manager"`).
+- Frontend may send `role`, but public registration currently creates only users with role `["manager"]`.
+- `director` is not created through public registration.
 - `mangoUserId` optional.
-- For `admin@example.com`, backend may override `fio`/`role` with system defaults.
+- On first application start, if table `users` is empty, backend seed creates one user with role `["director"]`.
 
 Success `200`:
 ```json
@@ -141,6 +142,18 @@ type User = {
   email: string;
   mangoUserId: number | null;
 };
+```
+
+Seeded director on first start when `users` is empty:
+```json
+{
+  "id": 1,
+  "name": "director",
+  "fio": "Директор Демо",
+  "role": ["director"],
+  "email": "director@example.com",
+  "mangoUserId": null
+}
 ```
 
 ### `GET /users/:id`

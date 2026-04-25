@@ -45,18 +45,17 @@
 - `email` (обязательно)
 - `password` (обязательно)
 - `fio` (опционально)
-- `role` (обязательно, массив ролей)
+- `role` можно не передавать: публичная регистрация все равно создает пользователя только с ролью `manager`
 - `mangoUserId` (опционально)
 
 Пример:
 
-```/dev/null/register-request.json#L1-8
+```/dev/null/register-request.json#L1-7
 {
   "name": "Alice",
   "email": "alice@example.com",
   "password": "qwerty123",
   "fio": "Иванов Иван Иванович",
-  "role": ["manager"],
   "mangoUserId": 12345
 }
 ```
@@ -73,6 +72,23 @@
   "mangoUserId": 12345
 }
 ```
+
+### Важно про директора
+
+При первом запуске приложения backend выполняет seed и создает одного пользователя с ролью `director`, если таблица `users` пуста.
+
+Seed-пользователь по умолчанию:
+
+```/dev/null/director-seed.json#L1-6
+{
+  "email": "director@example.com",
+  "password": "director123",
+  "name": "director",
+  "role": ["director"]
+}
+```
+
+Этот пользователь не должен создаваться через публичную регистрацию. Роль `director` считается административной, а `manager` — обычной пользовательской ролью.
 
 ## Сущность records
 
@@ -152,6 +168,8 @@
 - `POST /login`
 - `POST /logout`
 
+`POST /users/register` предназначен только для создания `manager`.
+
 ### Защищенные (cookie `auth`)
 
 - `GET /users`
@@ -222,6 +240,7 @@ Webhook'и проверяются по подписи (`vpbx_api_key`, `sign`, `
 - Авторизация — только cookie-based.
 - Для `POST /records/upload` результат асинхронный, финальные AI-данные приходят позже.
 - Поля `fio`, `role`, `mangoUserId` в user-схеме считаются частью актуального контракта.
+- Публичная регистрация не должна использоваться для создания `director`; директор появляется через seed при пустой таблице `users`.
 - Mango маршруты и webhook'и считаются частью актуального API.
 
 ### Что агенту не нужно делать

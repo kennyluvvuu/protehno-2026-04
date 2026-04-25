@@ -29,7 +29,10 @@ export const userPlugin = (
                     body,
                 });
 
-                const user = await userService.createUser(body);
+                const user = await userService.createUser({
+                    ...body,
+                    role: ["manager"],
+                });
 
                 userLog("register success", {
                     path: new URL(request.url).pathname,
@@ -120,21 +123,25 @@ export const userPlugin = (
                 }),
             },
         )
-        .get("/mango/:mangoUserId", async ({ params, userService, set }) => {
-            const user = await userService.getUserByMangoUserId(
-                params.mangoUserId,
-            );
+        .get(
+            "/mango/:mangoUserId",
+            async ({ params, userService, set }) => {
+                const user = await userService.getUserByMangoUserId(
+                    params.mangoUserId,
+                );
 
-            if (!user) {
-                set.status = 404;
-                return {
-                    message: "User not found",
-                };
-            }
+                if (!user) {
+                    set.status = 404;
+                    return {
+                        message: "User not found",
+                    };
+                }
 
-            return user;
-        }, {
-            params: z.object({
-                mangoUserId: z.coerce.number().int().positive(),
-            }),
-        });
+                return user;
+            },
+            {
+                params: z.object({
+                    mangoUserId: z.coerce.number().int().positive(),
+                }),
+            },
+        );

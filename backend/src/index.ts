@@ -12,6 +12,7 @@ import AIService from "./plugins/records/ai-service";
 import { MangoClient } from "./plugins/mango/client";
 import { MangoIngestionService } from "./plugins/mango/service";
 import { mangoWebhookPlugin } from "./plugins/mango/webhook";
+import { seedUsers } from "./seed/users";
 
 async function bootstrapServer() {
     const db = getDbConnection(Bun.env.DATABASE_URL!);
@@ -19,6 +20,8 @@ async function bootstrapServer() {
     const recordsService = new RecordService(db);
     const localStorage = new LocalStorage("./uploads/");
     const aiService = new AIService();
+
+    await seedUsers(db);
 
     const mangoClient = new MangoClient({
         apiKey: Bun.env.MANGO_VPBX_API_KEY ?? "",
