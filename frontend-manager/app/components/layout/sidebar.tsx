@@ -1,23 +1,24 @@
-import { Home, Settings, User, LogOut } from "lucide-react"
+import { BarChart2, List, LogOut, Settings, Upload } from "lucide-react"
 import { NavLink, useNavigate, useRevalidator } from "react-router"
 import { toast } from "sonner"
 import { authApi } from "~/axios/auth"
-import { ThemeToggle } from "~/components/ui/theme-toggle"
 import { cn } from "~/lib/cn"
 import { useAuthStore } from "~/stores/useAuthStore"
-import type { User as UserType } from "~/types/auth"
+import type { User } from "~/types/auth"
 
 interface SidebarProps {
-    user: UserType
+    user: User
+    isCollapsed: boolean
 }
 
 const nav = [
-    { to: "/", label: "Главная", icon: Home, end: true },
-    { to: "/profile", label: "Профиль", icon: User, end: false },
+    { to: "/", label: "Дэшборд", icon: BarChart2, end: true },
+    { to: "/calls", label: "Мои звонки", icon: List, end: false },
+    { to: "/upload", label: "Загрузить", icon: Upload, end: false },
     { to: "/settings", label: "Настройки", icon: Settings, end: false },
 ]
 
-export function Sidebar({ user }: SidebarProps): React.ReactElement {
+export function Sidebar({ user, isCollapsed }: SidebarProps): React.ReactElement {
     const navigate = useNavigate()
     const { revalidate } = useRevalidator()
     const reset = useAuthStore((s) => s.reset)
@@ -26,7 +27,7 @@ export function Sidebar({ user }: SidebarProps): React.ReactElement {
         try {
             await authApi.logout()
             reset()
-            toast.success("Вы вышли")
+            toast.success("Вы вышли из системы")
             await revalidate()
             navigate("/login", { replace: true })
         } catch {
@@ -35,14 +36,22 @@ export function Sidebar({ user }: SidebarProps): React.ReactElement {
     }
 
     return (
-        <aside className="flex h-dvh w-64 shrink-0 flex-col border-r border-neutral-200 bg-white px-4 py-6 dark:border-neutral-900 dark:bg-neutral-950">
-            <div className="px-2 pb-8">
-                <span className="text-base font-bold tracking-tight">
-                    protehno
+        <aside
+            className={cn(
+                "flex h-dvh shrink-0 flex-col border-r border-neutral-300 bg-neutral-50 py-5 transition-[width,padding] duration-200 dark:border-neutral-600 dark:bg-neutral-800",
+                isCollapsed ? "w-[72px] px-2" : "w-56 px-3",
+            )}
+        >
+            <div className={cn("px-2 pb-6", isCollapsed && "px-0 pb-5 text-center")}>
+                <span className="text-sm font-bold tracking-widest uppercase text-neutral-800 dark:text-neutral-100">
+                    {isCollapsed ? "Cn" : "Connectio"}
                 </span>
+                {!isCollapsed && (
+                    <p className="text-[10px] text-neutral-400 mt-0.5">Платформа для обработки звонков</p>
+                )}
             </div>
 
-            <nav className="flex flex-1 flex-col gap-1">
+            <nav className="flex flex-1 flex-col gap-0.5">
                 {nav.map(({ to, label, icon: Icon, end }) => (
                     <NavLink
                         key={to}
@@ -50,40 +59,41 @@ export function Sidebar({ user }: SidebarProps): React.ReactElement {
                         end={end}
                         className={({ isActive }) =>
                             cn(
-                                "flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
+                                "flex h-9 items-center rounded-md text-sm transition-colors",
+                                isCollapsed ? "justify-center px-0" : "gap-2.5 px-2.5",
                                 isActive
-                                    ? "bg-[color:var(--color-accent-soft)] text-[color:var(--color-accent)] dark:bg-neutral-900 dark:text-[color:var(--color-accent)]"
-                                    : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-900 dark:hover:text-neutral-100",
+                                    ? "bg-neutral-100 text-neutral-900 font-medium dark:bg-neutral-700 dark:text-neutral-100"
+                                    : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:hover:text-neutral-100",
                             )
                         }
+                        title={isCollapsed ? label : undefined}
                     >
-                        <Icon className="size-4" />
-                        {label}
+                        <Icon className="size-3.5 shrink-0" />
+                        {!isCollapsed && label}
                     </NavLink>
                 ))}
             </nav>
 
-            <div className="flex flex-col gap-2 border-t border-neutral-200 pt-4 dark:border-neutral-900">
-                <div className="flex items-center gap-2 px-2">
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-accent-soft)] text-sm font-semibold text-[color:var(--color-accent)] dark:bg-neutral-900">
+            <div className="border-t border-neutral-100 pt-3 dark:border-neutral-700">
+                <div className={cn("flex items-center px-2 py-1", isCollapsed ? "justify-center gap-1" : "gap-2")}>
+                    <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs font-semibold text-white dark:bg-neutral-700">
                         {user.name.charAt(0).toUpperCase()}
                     </div>
-                    <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{user.name}</p>
-                        <p className="truncate text-xs text-neutral-500">
-                            {user.email}
-                        </p>
-                    </div>
-                    <ThemeToggle />
+                    {!isCollapsed && (
+                        <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-medium">{user.name}</p>
+                            <p className="truncate text-[10px] text-neutral-400">{user.email}</p>
+                        </div>
+                    )}
+                    <button
+                        type="button"
+                        onClick={handleLogout}
+                        aria-label="Выйти из системы"
+                        className="flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+                    >
+                        <LogOut className="size-3.5" />
+                    </button>
                 </div>
-                <button
-                    type="button"
-                    onClick={handleLogout}
-                    className="flex h-9 items-center gap-2 rounded-lg px-3 text-sm text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-900 dark:hover:text-neutral-100"
-                >
-                    <LogOut className="size-4" />
-                    Выйти
-                </button>
             </div>
         </aside>
     )

@@ -3,10 +3,7 @@ import RecordAiService from "../records/ai-service";
 import { IStorage } from "../../storage/interface";
 import { MangoClient } from "./client";
 import UserService from "../user/service";
-import type {
-    MangoSummaryPayload,
-    MangoRecordAddedPayload,
-} from "./schema";
+import type { MangoSummaryPayload, MangoRecordAddedPayload } from "./schema";
 
 const mangoLog = (...args: unknown[]) => console.log("[mango]", ...args);
 
@@ -28,15 +25,13 @@ export class MangoIngestionService {
     async handleSummaryEvent(event: MangoSummaryPayload): Promise<void> {
         mangoLog("summary event received", { entry_id: event.entry_id });
 
-        const direction =
-            event.call_direction === 1 ? "inbound" : "outbound";
+        const direction = event.call_direction === 1 ? "inbound" : "outbound";
 
         // talkDurationSec === 0 means call was never answered → missed
         const talkDurationSec = event.end_time - event.talk_time;
         const isMissed = talkDurationSec === 0;
 
-        const callerNumber =
-            event.from.number ?? event.from.extension ?? null;
+        const callerNumber = event.from.number ?? event.from.extension ?? null;
         const calleeNumber = event.to.number ?? event.to.extension ?? null;
 
         // For inbound calls the customer is the caller, for outbound the customer is callee
@@ -197,6 +192,7 @@ export class MangoIngestionService {
                     title: result.title,
                     summary: result.summary,
                     durationSec: result.durationSec,
+                    qualityScore: result.qualityScore,
                     tags: result.tags,
                     checkboxes: result.checkboxes,
                 });

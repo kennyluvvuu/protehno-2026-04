@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
-import { Link, useNavigate, useRevalidator } from "react-router"
+import { useNavigate, useRevalidator } from "react-router"
 import { toast } from "sonner"
 import { authApi } from "~/axios/auth"
 import { AuthShell } from "~/components/layout"
@@ -28,52 +28,35 @@ export default function Login() {
     const onSubmit = async (data: LoginSchema): Promise<void> => {
         try {
             const user = await authApi.login(data)
+            if (!user.role.includes("manager")) {
+                await authApi.logout()
+                toast.error("Неверный email или пароль")
+                return
+            }
             setUser(user)
             toast.success("Добро пожаловать")
             await revalidate()
             navigate("/", { replace: true })
         } catch {
-            toast.error("Неверные данные")
+            toast.error("Неверный email или пароль")
         }
     }
 
     return (
-        <AuthShell
-            title="Вход"
-            subtitle="Введите данные аккаунта"
-            footer={
-                <>
-                    Нет аккаунта?{" "}
-                    <Link
-                        to="/register"
-                        className="font-medium text-[color:var(--color-accent)] hover:underline"
-                    >
-                        Зарегистрироваться
-                    </Link>
-                </>
-            }
-        >
-            <form
-                onSubmit={handleSubmit(onSubmit)}
-                noValidate
-                className="flex flex-col gap-4"
-            >
+        <AuthShell title="Вход в систему" subtitle="Введите данные вашего аккаунта">
+            <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
                 <Field label="Email" htmlFor="email" error={errors.email?.message}>
                     <Input
                         id="email"
                         type="email"
-                        placeholder="you@example.com"
+                        placeholder="manager@example.com"
                         autoComplete="email"
                         hasError={!!errors.email}
                         {...register("email")}
                     />
                 </Field>
 
-                <Field
-                    label="Пароль"
-                    htmlFor="password"
-                    error={errors.password?.message}
-                >
+                <Field label="Пароль" htmlFor="password" error={errors.password?.message}>
                     <Input
                         id="password"
                         type="password"
@@ -84,7 +67,7 @@ export default function Login() {
                     />
                 </Field>
 
-                <Button type="submit" isLoading={isSubmitting} className="mt-2 w-full">
+                <Button type="submit" disabled={isSubmitting} className="mt-2 w-full">
                     {isSubmitting ? "Входим…" : "Войти"}
                 </Button>
             </form>

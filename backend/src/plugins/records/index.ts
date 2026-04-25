@@ -4,8 +4,26 @@ import { uploadRecordSchema, type UploadRecord } from "./schema";
 import { IStorage } from "../../storage/interface";
 import RecordService from "./service";
 import RecordAiService from "./ai-service";
+import UserService from "../user/service";
 
 const recordsLog = (...args: unknown[]) => console.log("[records]", ...args);
+
+const assertDirector = ({
+    userRole,
+    set,
+}: {
+    userRole: "director" | "manager";
+    set: { status?: number | string };
+}) => {
+    if (userRole !== "director") {
+        set.status = 403;
+        return {
+            message: "Forbidden",
+        };
+    }
+
+    return null;
+};
 
 const normalizeErrorMessage = (error: unknown) =>
     error instanceof Error ? error.message : "Unknown processing error";
@@ -50,6 +68,7 @@ const processRecordInBackground = (
                 title: result.title,
                 summary: result.summary,
                 durationSec: result.durationSec,
+                qualityScore: result.qualityScore,
                 tags: result.tags,
                 checkboxes: result.checkboxes,
             });
@@ -82,11 +101,12 @@ export const recordsPlugin = (
     recordService: RecordService,
     storage: IStorage,
     aiService: RecordAiService,
+    userService: UserService,
 ) =>
     new Elysia({
         prefix: "/records",
     })
-        .use(guardPlugin())
+        .use(guardPlugin(userService))
         .post(
             "/upload",
             async ({ userId, body, set }) => {
@@ -133,6 +153,15 @@ export const recordsPlugin = (
         })
         .get("/feed", async ({ userId }: { userId: number }) => {
             return (await recordService.getRecordsFeed(userId)) ?? [];
+        })
+        .get("/admin-feed", async ({ userRole, set }) => {
+            const forbidden = assertDirector({ userRole, set });
+
+            if (forbidden) {
+                return forbidden;
+            }
+
+            return (await recordService.getAllRecordsFeed()) ?? [];
         })
         .get(
             "/:id",

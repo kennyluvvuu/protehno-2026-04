@@ -81,6 +81,14 @@ class RecordAiService {
             "- label: string in Russian",
             "- checked: always false",
             "",
+            "Also evaluate the overall quality of the call and return qualityScore as a number from 0 to 100.",
+            "Use these rough anchors:",
+            "- 0-30: very poor call quality, no useful outcome, major communication problems",
+            "- 31-60: weak or average call, partial understanding, weak qualification or follow-up",
+            "- 61-80: good call, clear communication, useful progress, mostly correct handling",
+            "- 81-100: excellent call, strong structure, good discovery, clear next steps, high business value",
+            "If the transcript is too short, corrupted, empty, or insufficient for a fair assessment, return qualityScore as null.",
+            "",
             options?.title
                 ? "If a title was provided on upload, return title as null."
                 : "If a title was not provided on upload, return the generated title in the title field.",
@@ -115,6 +123,7 @@ class RecordAiService {
             summary: summarized.summary,
             tags: summarized.tags,
             checkboxes: summarized.checkboxes,
+            qualityScore: summarized.qualityScore,
         }) as ProcessFileResult;
     }
 }

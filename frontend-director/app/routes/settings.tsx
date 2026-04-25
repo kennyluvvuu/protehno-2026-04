@@ -1,19 +1,13 @@
 import { Moon, Sun, User } from "lucide-react"
-import type { Route } from "./+types/settings"
+import { useOutletContext } from "react-router"
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card"
 import { Separator } from "~/components/ui/separator"
 import { PageHeader } from "~/components/layout"
 import { useThemeStore } from "~/stores/useThemeStore"
 import type { User as UserType } from "~/types/auth"
 
-const MOCK_USER: UserType = { id: 0, name: "Директор", email: "director@example.com" }
-
-export function loader() {
-    return { user: MOCK_USER }
-}
-
-export default function Settings({ loaderData }: Route.ComponentProps) {
-    const { user } = loaderData
+export default function Settings() {
+    const { user } = useOutletContext<{ user: UserType }>()
     const { theme, setTheme } = useThemeStore()
 
     return (
@@ -21,7 +15,6 @@ export default function Settings({ loaderData }: Route.ComponentProps) {
             <PageHeader title="Настройки" description="Ваш профиль и параметры системы" />
 
             <div className="flex flex-col gap-4 max-w-lg">
-                {/* Profile card */}
                 <Card>
                     <CardHeader className="pb-3">
                         <CardTitle className="text-sm font-medium">Профиль</CardTitle>
@@ -41,13 +34,12 @@ export default function Settings({ loaderData }: Route.ComponentProps) {
                             <p className="text-xs text-neutral-400 uppercase tracking-wide mb-1">Роль</p>
                             <div className="flex items-center gap-2">
                                 <User className="size-3.5 text-neutral-500" />
-                                <span className="text-sm font-medium">Директор</span>
+                                <span className="text-sm font-medium">{user.name}</span>
                             </div>
                         </div>
                     </CardContent>
                 </Card>
 
-                {/* Appearance */}
                 <Card>
                     <CardHeader className="pb-3">
                         <CardTitle className="text-sm font-medium">Внешний вид</CardTitle>

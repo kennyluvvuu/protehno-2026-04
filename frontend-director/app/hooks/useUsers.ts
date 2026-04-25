@@ -24,17 +24,3 @@ export function useCreateUser() {
         },
     })
 }
-
-export function useDeleteUser() {
-    const qc = useQueryClient()
-    return useMutation({
-        mutationFn: (id: number) => usersApi.delete(id),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: USERS_KEY })
-            toast.success("Пользователь удалён")
-        },
-        onError: () => {
-            toast.error("Не удалось удалить пользователя")
-        },
-    })
-}

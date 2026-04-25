@@ -18,6 +18,7 @@ type FinishRecordProcessingPayload = {
     summary: string;
     title?: string | null;
     durationSec?: number | null;
+    qualityScore?: number | null;
     tags?: string[];
     checkboxes?: AiCheckboxGroups | null;
 };
@@ -174,6 +175,23 @@ class RecordService {
         return this.groupTags(rows);
     }
 
+    async getAllRecordsFeed(): Promise<GetRecord[] | undefined> {
+        const rows = await this.db
+            .select({
+                record: recordTable,
+                tag: tagsTable.tag,
+            })
+            .from(recordTable)
+            .leftJoin(tagsTable, eq(tagsTable.recordId, recordTable.id))
+            .orderBy(desc(recordTable.callStartedAt), desc(recordTable.id));
+
+        if (!rows.length) {
+            return undefined;
+        }
+
+        return this.groupTags(rows);
+    }
+
     async setProcessingStatus(
         recordId: number,
         status: AiRecordStatus,
@@ -227,6 +245,7 @@ class RecordService {
                 summary: payload.summary,
                 title: payload.title ?? null,
                 durationSec: payload.durationSec ?? null,
+                qualityScore: payload.qualityScore ?? null,
                 status: "done",
                 error: null,
                 finishedAt: new Date(),
@@ -395,10 +414,8 @@ class RecordService {
                             | null
                             | undefined) ??
                         "unknown",
-                    callerNumber:
-                        payload.callerNumber ?? existing.callerNumber,
-                    calleeNumber:
-                        payload.calleeNumber ?? existing.calleeNumber,
+                    callerNumber: payload.callerNumber ?? existing.callerNumber,
+                    calleeNumber: payload.calleeNumber ?? existing.calleeNumber,
                     lineNumber: payload.lineNumber ?? existing.lineNumber,
                     callStartedAt:
                         payload.callStartedAt ?? existing.callStartedAt,
@@ -412,16 +429,14 @@ class RecordService {
                     // Update ingestionStatus if call is now known to be missed
                     ingestionStatus: payload.isMissed
                         ? "no_audio"
-                        : existing.ingestionStatus ?? "pending_audio",
+                        : (existing.ingestionStatus ?? "pending_audio"),
                     status: payload.isMissed
                         ? "not_applicable"
-                        : existing.status ?? "uploaded",
+                        : (existing.status ?? "uploaded"),
                 })
                 .where(eq(recordTable.mangoEntryId, payload.mangoEntryId));
 
-            const updated = await this.findByMangoEntryId(
-                payload.mangoEntryId,
-            );
+            const updated = await this.findByMangoEntryId(payload.mangoEntryId);
             return { record: updated!, created: false };
         }
 

@@ -19,6 +19,15 @@ export const createUserSchema = createInsertSchema(userTable)
     });
 export type CreateUser = z.infer<typeof createUserSchema>;
 
+export const updateUserByDirectorSchema = z.object({
+    name: z.string().min(1).optional(),
+    fio: fioSchema.nullable().optional(),
+    email: z.string().email().optional(),
+    mangoUserId: z.number().int().positive().nullable().optional(),
+    role: userRoleSchema.optional(),
+});
+export type UpdateUserPayload = z.infer<typeof updateUserByDirectorSchema>;
+
 export const getUserSchema = createSelectSchema(userTable)
     .omit({
         password_hash: true,
