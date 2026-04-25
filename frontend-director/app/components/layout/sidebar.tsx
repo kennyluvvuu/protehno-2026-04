@@ -23,7 +23,6 @@ const nav = [
   { to: "/", label: "Дэшборд", icon: BarChart2, end: true },
   { to: "/calls", label: "Список звонков", icon: List, end: false },
   { to: "/users", label: "Пользователи", icon: Users, end: false },
-  { to: "/mango", label: "Mango Office", icon: PhoneCall, end: false },
   { to: "/settings", label: "Настройки", icon: Settings, end: false },
 ];
 
@@ -77,7 +76,19 @@ export function Sidebar({
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5">
-        {nav.map(({ to, label, icon: Icon, end }) => (
+        {[
+          ...nav,
+          ...(user.role === "director"
+            ? [
+                {
+                  to: "/mango",
+                  label: "Mango Office",
+                  icon: PhoneCall,
+                  end: false,
+                },
+              ]
+            : []),
+        ].map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}

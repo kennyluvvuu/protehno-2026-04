@@ -17,5 +17,5 @@ export const userTable = pgTable("users", {
     mangoGroups: jsonb("mango_groups"),
     mangoSips: jsonb("mango_sips"),
     mangoTelephonyNumbers: jsonb("mango_telephony_numbers"),
-    password_hash: text().notNull(),
+    password_hash: text(),
 });

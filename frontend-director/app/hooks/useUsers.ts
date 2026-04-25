@@ -57,7 +57,9 @@ export function useUpdateUser() {
       toast.success("Пользователь обновлён");
     },
     onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Не удалось обновить пользователя"));
+      toast.error(
+        getApiErrorMessage(error, "Не удалось обновить пользователя"),
+      );
     },
   });
 }

@@ -6,7 +6,7 @@ const userRoleSchema = z.enum(["director", "manager"]);
 const fioSchema = z.string().min(1);
 const passwordSchema = z.string().min(8);
 const emailSchema = z.string().email();
-const mangoStringSchema = z.string().min(1);
+const mangoStringSchema = z.string();
 const mangoGroupsSchema = z.array(z.number().int());
 const mangoStringArraySchema = z.array(z.string().min(1));
 const mangoTelephonyNumberSchema = z.object({
@@ -50,7 +50,7 @@ export const createMangoLocalUserSchema = z.object({
         .array(mangoTelephonyNumberSchema)
         .nullable()
         .optional(),
-    password: passwordSchema,
+    password: passwordSchema.optional(),
 });
 export type CreateMangoLocalUser = z.infer<typeof createMangoLocalUserSchema>;
 

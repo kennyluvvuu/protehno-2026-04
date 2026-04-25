@@ -2,6 +2,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   ArrowLeft,
   FileAudio,
+  KeyRound,
   Loader2,
   Mail,
   Phone,
@@ -31,6 +32,14 @@ import { Badge } from "~/components/ui/badge";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/ui/dialog";
 import { Field } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import {
@@ -41,8 +50,10 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
+import { usersApi } from "~/axios/users";
 import { useRecords } from "~/hooks/useRecords";
 import { useDeleteUser, useUpdateUser, useUsers } from "~/hooks/useUsers";
+import { getApiErrorMessage } from "~/lib/api-error";
 import { cn } from "~/lib/utils";
 import type { User } from "~/types/auth";
 import type { Record, RecordStatus } from "~/types/record";
@@ -61,7 +72,12 @@ const editUserSchema = z.object({
   role: z.enum(["director", "manager"]),
 });
 
+const resetPasswordSchema = z.object({
+  password: z.string().min(6, { message: "Минимум 6 символов" }),
+});
+
 type EditUserFormValues = z.infer<typeof editUserSchema>;
+type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>;
 
 function StatusBadge({ status }: { status: RecordStatus }) {
   if (status === "done") {
@@ -164,6 +180,11 @@ export default function UserDetailPage() {
   const navigate = useNavigate();
   const [selected, setSelected] = useState<Record | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [resetPasswordError, setResetPasswordError] = useState<string | null>(
+    null,
+  );
 
   const { data: users = [], isLoading: usersLoading } = useUsers();
   const { data: records = [], isLoading: recordsLoading } = useRecords();
@@ -186,6 +207,21 @@ export default function UserDetailPage() {
       email: "",
       mangoUserId: "",
       role: "manager",
+    },
+  });
+
+  const {
+    register: registerResetPassword,
+    handleSubmit: handleResetPasswordSubmit,
+    reset: resetResetPasswordForm,
+    formState: {
+      errors: resetPasswordErrors,
+      isSubmitting: isResetPasswordSubmitting,
+    },
+  } = useForm<ResetPasswordFormValues>({
+    resolver: zodResolver(resetPasswordSchema),
+    defaultValues: {
+      password: "",
     },
   });
 
@@ -283,6 +319,24 @@ export default function UserDetailPage() {
     await deleteUser.mutateAsync({ id: user.id });
     setDeleteOpen(false);
     navigate("/users", { replace: true });
+  };
+
+  const onResetPassword = async (
+    values: ResetPasswordFormValues,
+  ): Promise<void> => {
+    try {
+      setResetPasswordError(null);
+      setIsResettingPassword(true);
+      await usersApi.resetPassword(user.id, values.password);
+      resetResetPasswordForm();
+      setResetPasswordOpen(false);
+    } catch (error) {
+      setResetPasswordError(
+        getApiErrorMessage(error, "Не удалось обновить пароль"),
+      );
+    } finally {
+      setIsResettingPassword(false);
+    }
   };
 
   return (
@@ -427,14 +481,29 @@ export default function UserDetailPage() {
               </Field>
 
               <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => reset(toFormValues(user))}
-                  disabled={!isDirty || isSubmitting || updateUser.isPending}
-                >
-                  Сбросить
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setResetPasswordError(null);
+                      resetResetPasswordForm();
+                      setResetPasswordOpen(true);
+                    }}
+                  >
+                    <KeyRound className="size-4" />
+                    Сменить пароль
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => reset(toFormValues(user))}
+                    disabled={!isDirty || isSubmitting || updateUser.isPending}
+                  >
+                    Сбросить
+                  </Button>
+                </div>
 
                 <Button
                   type="submit"
@@ -593,6 +662,76 @@ export default function UserDetailPage() {
         onClose={() => setSelected(null)}
         agentName={displayName}
       />
+
+      <Dialog
+        open={resetPasswordOpen}
+        onOpenChange={(open) => {
+          setResetPasswordOpen(open);
+          if (!open) {
+            setResetPasswordError(null);
+            resetResetPasswordForm();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Смена пароля</DialogTitle>
+            <DialogDescription>
+              Задайте новый пароль для пользователя {displayName}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            onSubmit={handleResetPasswordSubmit(onResetPassword)}
+            className="space-y-4"
+          >
+            <Field
+              label="Новый пароль"
+              htmlFor="reset-password"
+              error={resetPasswordErrors.password?.message}
+            >
+              <Input
+                id="reset-password"
+                type="password"
+                placeholder="Минимум 6 символов"
+                hasError={!!resetPasswordErrors.password}
+                {...registerResetPassword("password")}
+              />
+            </Field>
+
+            {resetPasswordError && (
+              <p className="text-sm text-red-600">{resetPasswordError}</p>
+            )}
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setResetPasswordOpen(false);
+                  setResetPasswordError(null);
+                  resetResetPasswordForm();
+                }}
+                disabled={isResettingPassword || isResetPasswordSubmitting}
+              >
+                Отмена
+              </Button>
+              <Button
+                type="submit"
+                disabled={isResettingPassword || isResetPasswordSubmitting}
+                className="gap-2"
+              >
+                {isResettingPassword || isResetPasswordSubmitting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <KeyRound className="size-4" />
+                )}
+                Сохранить новый пароль
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>

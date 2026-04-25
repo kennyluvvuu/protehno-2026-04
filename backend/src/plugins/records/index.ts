@@ -171,7 +171,7 @@ export const recordsPlugin = (
         })
         .get(
             "/:id",
-            async ({ params, userId, set }) => {
+            async ({ params, userId, userRole, set }) => {
                 const recordId = Number(params.id);
 
                 if (Number.isNaN(recordId)) {
@@ -190,7 +190,7 @@ export const recordsPlugin = (
                     };
                 }
 
-                if (record.userId !== userId) {
+                if (record.userId !== userId && userRole !== "director") {
                     set.status = 403;
                     return {
                         message: "Forbidden",

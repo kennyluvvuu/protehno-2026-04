@@ -10,6 +10,13 @@ import z from "zod";
 import { guardPlugin, type UserRole } from "../guard";
 import RecordService from "../records/service";
 
+// Director-only routes in this plugin:
+// - POST /users/mango/create-local-user
+//   Supports creating a local user from Mango data.
+//   Password may be omitted if backend schema/service allow deferred setup.
+// - PATCH /users/:id/reset-password
+//   Used by a director to set or change another user's password.
+
 const userLog = (...args: unknown[]) => console.log("[user]", ...args);
 
 type ProtectedUserContext = {

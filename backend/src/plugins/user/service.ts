@@ -77,7 +77,13 @@ class UserService {
 
     async createUserByDirector(user: CreateMangoLocalUser): Promise<GetUser> {
         try {
-            const passwordHash = await Bun.password.hash(user.password);
+            const fallbackPassword =
+                user.password ??
+                String(user.mangoUserId) ??
+                user.mangoExtension ??
+                user.mangoLogin ??
+                user.name;
+            const passwordHash = await Bun.password.hash(fallbackPassword);
 
             const [newUser] = await this.db
                 .insert(userTable)
@@ -155,6 +161,10 @@ class UserService {
             .where(eq(userTable.email, email));
 
         if (!user) {
+            return undefined;
+        }
+
+        if (!user.password_hash) {
             return undefined;
         }
 

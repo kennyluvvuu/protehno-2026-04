@@ -161,15 +161,7 @@ class RecordService {
             })
             .from(recordTable)
             .leftJoin(tagsTable, eq(tagsTable.recordId, recordTable.id))
-            .where(
-                or(
-                    eq(recordTable.userId, userId),
-                    and(
-                        eq(recordTable.source, "mango"),
-                        isNull(recordTable.userId),
-                    ),
-                ),
-            )
+            .where(eq(recordTable.userId, userId))
             .orderBy(desc(recordTable.callStartedAt), desc(recordTable.id));
 
         if (!rows.length) {

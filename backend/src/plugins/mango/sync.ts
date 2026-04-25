@@ -103,16 +103,26 @@ type MangoCallContext = {
     context_calls?: MangoCallLeg[] | null;
 };
 
+type MangoCallsPeriodBucket = {
+    period?: string;
+    list?: MangoCallContext[];
+    total_talks_duration?: number;
+    total_calls_duration?: number;
+    total_calls_count?: number;
+};
+
 type MangoCallsResultResponse = {
     result?: number;
     status?: string;
-    data?: {
-        list?: MangoCallContext[];
-        period?: string;
-        total_talks_duration?: number;
-        total_calls_duration?: number;
-        total_calls_count?: number;
-    };
+    data?:
+        | {
+              list?: MangoCallContext[];
+              period?: string;
+              total_talks_duration?: number;
+              total_calls_duration?: number;
+              total_calls_count?: number;
+          }
+        | MangoCallsPeriodBucket[];
 };
 
 type MangoTelephonyNumber = {
@@ -678,9 +688,11 @@ class MangoPollingSyncService {
             const loginTail = login?.includes("/")
                 ? (login.split("/").pop() ?? login)
                 : login;
-            const emailCandidate = loginTail
-                ? `${loginTail.toLowerCase()}@example.com`
-                : `mango-user-${entry.mangoUserId}@example.com`;
+            const emailCandidate = entry.mangoUserId
+                ? `mango-user-${entry.mangoUserId}@example.com`
+                : loginTail
+                  ? `${loginTail.toLowerCase()}@example.com`
+                  : `mango-user-unknown@example.com`;
 
             const createLocalUserDraft = linkedUser
                 ? null
@@ -730,6 +742,13 @@ class MangoPollingSyncService {
     }
 
     private async requestCallsReport(options: SyncOptions): Promise<string> {
+        syncLog("requesting calls report", {
+            startDate: options.startDate,
+            endDate: options.endDate,
+            limit: options.limit ?? DEFAULT_LIMIT,
+            offset: options.offset ?? DEFAULT_OFFSET,
+        });
+
         const response = await this.mangoClient.post<MangoCallsRequestResponse>(
             "/vpbx/stats/calls/request",
             {
@@ -739,6 +758,12 @@ class MangoPollingSyncService {
                 offset: options.offset ?? DEFAULT_OFFSET,
             },
         );
+
+        syncLog("calls report requested", {
+            result: response?.result ?? null,
+            hasKey: !!response?.key,
+            message: response?.message ?? null,
+        });
 
         if (!response?.key) {
             throw new Error(
@@ -764,16 +789,60 @@ class MangoPollingSyncService {
                     { key },
                 );
 
+            const data = response.data;
+            const listCount = Array.isArray(data)
+                ? data.reduce(
+                      (sum, bucket) =>
+                          sum +
+                          (Array.isArray(bucket.list) ? bucket.list.length : 0),
+                      0,
+                  )
+                : Array.isArray(data?.list)
+                  ? data.list.length
+                  : 0;
+            const totalCallsCount = Array.isArray(data)
+                ? data.reduce(
+                      (sum, bucket) =>
+                          sum +
+                          (typeof bucket.total_calls_count === "number"
+                              ? bucket.total_calls_count
+                              : 0),
+                      0,
+                  )
+                : (data?.total_calls_count ?? null);
+            const period = Array.isArray(data)
+                ? data.map((bucket) => bucket.period ?? null)
+                : (data?.period ?? null);
+
+            syncLog("polling calls report", {
+                key,
+                attempt,
+                maxAttempts,
+                status: response.status ?? null,
+                result: response.result ?? null,
+                listCount,
+                totalCallsCount,
+                period,
+            });
+
             if (response.result && response.result !== 1000) {
                 throw new Error(
                     `Mango report error: ${JSON.stringify(response)}`,
                 );
             }
 
-            if (response.status === "complete" || response.data?.list) {
-                return Array.isArray(response.data?.list)
-                    ? response.data!.list!
-                    : [];
+            if (
+                response.status === "complete" ||
+                Array.isArray(data) ||
+                data?.list
+            ) {
+                if (Array.isArray(data)) {
+                    return data.flatMap((bucket) =>
+                        Array.isArray(bucket.list) ? bucket.list : [],
+                    );
+                }
+
+                return Array.isArray(data?.list) ? data.list : [];
             }
 
             await this.sleep(pollIntervalMs);
@@ -1030,18 +1099,43 @@ class MangoPollingSyncService {
     }
 
     async syncCalls(options: SyncOptions): Promise<SyncSummary> {
+        syncLog("sync calls started", {
+            startDate: options.startDate,
+            endDate: options.endDate,
+            limit: options.limit ?? DEFAULT_LIMIT,
+            offset: options.offset ?? DEFAULT_OFFSET,
+            pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
+            maxAttempts: options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+            downloadRecordings: options.downloadRecordings ?? true,
+        });
+
         const directory = await this.loadUsersDirectory();
         const key = await this.requestCallsReport(options);
         const rawCalls = await this.pollCallsReport(key, options);
+
+        syncLog("raw calls received", {
+            count: rawCalls.length,
+            sampleEntryIds: rawCalls
+                .slice(0, 5)
+                .map((call) => toOptionalString(call.entry_id))
+                .filter(Boolean),
+        });
 
         let created = 0;
         let updated = 0;
         let downloaded = 0;
         let failedDownloads = 0;
         let skippedNoAudio = 0;
+        let skippedWithoutEntryId = 0;
 
         for (const rawCall of rawCalls) {
             if (!toOptionalString(rawCall.entry_id)) {
+                skippedWithoutEntryId += 1;
+                syncLog("skipping call without entry id", {
+                    callerId: rawCall.caller_id ?? null,
+                    callerLogin: rawCall.caller_login ?? null,
+                    contextStartTime: rawCall.context_start_time ?? null,
+                });
                 continue;
             }
 
@@ -1055,6 +1149,10 @@ class MangoPollingSyncService {
                 mangoUserId: normalized.mangoUserId,
                 recordings: normalized.recordingIds.length,
                 callerId: normalized.debug.callerId,
+                callStartedAt: normalized.callStartedAt?.toISOString() ?? null,
+                callAnsweredAt:
+                    normalized.callAnsweredAt?.toISOString() ?? null,
+                callEndedAt: normalized.callEndedAt?.toISOString() ?? null,
             });
 
             const upsertResult = await this.recordService.upsertMangoRecord({
@@ -1101,6 +1199,16 @@ class MangoPollingSyncService {
             if (result === "downloaded") downloaded += 1;
             if (result === "failed") failedDownloads += 1;
         }
+
+        syncLog("sync calls finished", {
+            fetched: rawCalls.length,
+            created,
+            updated,
+            downloaded,
+            failedDownloads,
+            skippedNoAudio,
+            skippedWithoutEntryId,
+        });
 
         return {
             startDate: options.startDate,

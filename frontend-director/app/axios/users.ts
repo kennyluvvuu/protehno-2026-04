@@ -23,7 +23,7 @@ export interface CreateUserFromMangoPayload {
   name: string;
   fio?: string | null;
   email: string;
-  password: string;
+  password?: string;
   role: "manager";
   mangoUserId: number;
   mangoLogin?: string | null;
@@ -44,6 +44,16 @@ export interface UpdateUserPayload {
   email?: string;
   mangoUserId?: number | null;
   role?: "director" | "manager";
+  mangoLogin?: string | null;
+  mangoExtension?: string | null;
+  mangoPosition?: string | null;
+  mangoDepartment?: string | null;
+  mangoMobile?: string | null;
+  mangoOutgoingLine?: string | null;
+  mangoAccessRoleId?: number | null;
+  mangoGroups?: number[] | null;
+  mangoSips?: string[] | null;
+  mangoTelephonyNumbers?: MangoTelephonyNumber[] | null;
 }
 
 export const usersApi = {
@@ -72,7 +82,11 @@ export const usersApi = {
   createFromMango: async (
     payload: CreateUserFromMangoPayload,
   ): Promise<User> => {
-    assertRequestCooldown("users:create-from-mango", 1000);
+    const requestKey =
+      payload.mangoUserId != null
+        ? `users:create-from-mango:${payload.mangoUserId}`
+        : "users:create-from-mango";
+    assertRequestCooldown(requestKey, 1000);
     const { data } = await api.post<User>(
       "/users/mango/create-local-user",
       payload,
@@ -96,6 +110,18 @@ export const usersApi = {
 
   getByMangoUserId: async (mangoUserId: number): Promise<User> => {
     const { data } = await api.get<User>(`/users/mango/${mangoUserId}`);
+    return data;
+  },
+
+  resetPassword: async (
+    id: number,
+    password: string,
+  ): Promise<{ message?: string; ok?: boolean }> => {
+    assertRequestCooldown(`users:reset-password:${id}`, 800);
+    const { data } = await api.patch<{ message?: string; ok?: boolean }>(
+      `/users/${id}/reset-password`,
+      { password },
+    );
     return data;
   },
 };
