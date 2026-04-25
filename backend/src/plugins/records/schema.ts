@@ -74,6 +74,10 @@ export const getRecordSchema = createSelectSchema(recordTable).extend({
     mangoCommunicationId: z.string().nullable().optional(),
     mangoUserId: z.number().nullable().optional(),
     direction: z.string().nullable().optional(),
+    directionKind: z
+        .enum(["inbound", "outbound", "unknown"])
+        .nullable()
+        .optional(),
     callerNumber: z.string().nullable().optional(),
     calleeNumber: z.string().nullable().optional(),
     isMissed: z.boolean().optional(),
@@ -150,6 +154,7 @@ export const createMangoRecordSchema = z.object({
     mangoCommunicationId: z.string().optional(),
     mangoUserId: z.number().int().positive().optional(),
     direction: z.enum(["inbound", "outbound", "unknown"]).optional(),
+    directionKind: z.enum(["inbound", "outbound", "unknown"]).optional(),
     callerNumber: z.string().optional(),
     calleeNumber: z.string().optional(),
     lineNumber: z.string().optional(),

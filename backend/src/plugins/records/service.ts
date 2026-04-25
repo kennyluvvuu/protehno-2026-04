@@ -47,10 +47,22 @@ class RecordService {
                 ? record.ingestionStatus
                 : undefined;
 
+        const directionKind: GetRecord["directionKind"] =
+            record.directionKind === "inbound" ||
+            record.directionKind === "outbound" ||
+            record.directionKind === "unknown"
+                ? record.directionKind
+                : record.direction === "inbound" ||
+                    record.direction === "outbound" ||
+                    record.direction === "unknown"
+                  ? record.direction
+                  : undefined;
+
         return {
             ...record,
             source,
             ingestionStatus,
+            directionKind,
             status: record.status as AiRecordStatus,
             checkboxes: (record.checkboxes as AiCheckboxGroups | null) ?? null,
             tags,
@@ -353,6 +365,8 @@ class RecordService {
                 mangoCommunicationId: payload.mangoCommunicationId ?? null,
                 mangoUserId: payload.mangoUserId ?? null,
                 direction: payload.direction ?? "unknown",
+                directionKind:
+                    payload.directionKind ?? payload.direction ?? "unknown",
                 callerNumber: payload.callerNumber ?? null,
                 calleeNumber: payload.calleeNumber ?? null,
                 lineNumber: payload.lineNumber ?? null,
@@ -431,6 +445,22 @@ class RecordService {
                         existing.mangoCommunicationId,
                     direction:
                         payload.direction ??
+                        (existing.direction as
+                            | "inbound"
+                            | "outbound"
+                            | "unknown"
+                            | null
+                            | undefined) ??
+                        "unknown",
+                    directionKind:
+                        payload.directionKind ??
+                        payload.direction ??
+                        (existing.directionKind as
+                            | "inbound"
+                            | "outbound"
+                            | "unknown"
+                            | null
+                            | undefined) ??
                         (existing.direction as
                             | "inbound"
                             | "outbound"

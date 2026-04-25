@@ -228,6 +228,7 @@ type ResolvedOwner = {
 type NormalizedCall = {
     entryId: string;
     direction: "inbound" | "outbound" | "unknown";
+    directionKind: "inbound" | "outbound" | "unknown";
     callerNumber?: string;
     calleeNumber?: string;
     lineNumber?: string;
@@ -372,8 +373,8 @@ const pickDirection = (
     call: MangoCallContext,
     leg?: MangoCallLeg,
 ): "inbound" | "outbound" | "unknown" => {
-    if (leg?.DirectionInbound) return "inbound";
-    if (leg?.DirectionOutbound) return "outbound";
+    if (leg?.DirectionInbound === true) return "inbound";
+    if (leg?.DirectionOutbound === true) return "outbound";
 
     if (call.context_type === 1) return "inbound";
     if (call.context_type === 2) return "outbound";
@@ -969,7 +970,8 @@ class MangoPollingSyncService {
     ): NormalizedCall {
         const legs = flattenLegs(call.context_calls);
         const primaryLeg = pickPrimaryLeg(legs);
-        const direction = pickDirection(call, primaryLeg);
+        const directionKind = pickDirection(call, primaryLeg);
+        const direction = directionKind;
         const owner = this.resolveOwner(call, legs, directory);
         const recordingIds = normalizeRecordingIds(legs);
         const isMissed = isMissedCall(call, legs);
@@ -1009,6 +1011,7 @@ class MangoPollingSyncService {
         return {
             entryId: call.entry_id,
             direction,
+            directionKind,
             callerNumber,
             calleeNumber,
             lineNumber: undefined,
@@ -1161,6 +1164,7 @@ class MangoPollingSyncService {
                 mangoCommunicationId: normalized.mangoCommunicationId,
                 mangoUserId: normalized.mangoUserId,
                 direction: normalized.direction,
+                directionKind: normalized.directionKind,
                 callerNumber: normalized.callerNumber,
                 calleeNumber: normalized.calleeNumber,
                 lineNumber: normalized.lineNumber,

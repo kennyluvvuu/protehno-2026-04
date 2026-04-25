@@ -1,4 +1,4 @@
-import Fuse from "fuse.js"
+import Fuse from "fuse.js";
 import { FileAudio, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CallDetailSheet } from "~/components/calls/call-detail-sheet";
@@ -8,20 +8,33 @@ import { Input } from "~/components/ui/input";
 import { useRecords } from "~/hooks/useRecords";
 import { useUsers } from "~/hooks/useUsers";
 import { cn } from "~/lib/utils";
-import type { Record } from "~/types/record";
+import type { DirectionKind, Record } from "~/types/record";
 
 interface SearchModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-type SearchRecord = Record & { agentName: string }
+type SearchRecord = Record & {
+  agentName: string;
+  searchTitle: string;
+  searchCounterparty: string;
+  searchAgentName: string;
+  searchSummary: string;
+  searchTranscription: string;
+  searchDirection: string;
+  searchCallerNumber: string;
+  searchCalleeNumber: string;
+};
 
 function getDisplayTitle(record: Record): string {
   return record.title ?? `Звонок #${record.id}`;
 }
 
-function getAgentName(record: Record, userMap: Map<number, string>): string | undefined {
+function getAgentName(
+  record: Record,
+  userMap: Map<number, string>,
+): string | undefined {
   if (record.userId == null) return undefined;
   return userMap.get(record.userId);
 }
@@ -31,23 +44,69 @@ function formatRecordDate(record: Record): string | null {
   return date ? new Date(date).toLocaleDateString("ru-RU") : null;
 }
 
-const FUSE_KEYS: { name: keyof SearchRecord; weight: number }[] = [
-  { name: "title", weight: 0.4 },
-  { name: "callTo", weight: 0.3 },
-  { name: "agentName", weight: 0.15 },
-  { name: "summary", weight: 0.1 },
-  { name: "transcription", weight: 0.05 },
-]
-
-const FIELD_LABELS: Partial<{ [K in keyof SearchRecord]: string }> = {
-  title: "Название",
-  callTo: "Контрагент",
-  agentName: "Менеджер",
-  summary: "Суммирование",
-  transcription: "Диалог",
+function getDirectionLabel(directionKind?: DirectionKind | null): string {
+  if (directionKind === "inbound") return "Входящий";
+  if (directionKind === "outbound") return "Исходящий";
+  return "Неизвестно";
 }
 
-export function SearchModal({ open, onOpenChange }: SearchModalProps): React.ReactElement {
+function getDisplayCounterparty(record: Record): string {
+  if (record.callTo) return record.callTo;
+
+  if (record.directionKind === "inbound") {
+    return record.callerNumber ?? record.calleeNumber ?? "—";
+  }
+
+  if (record.directionKind === "outbound") {
+    return record.calleeNumber ?? record.callerNumber ?? "—";
+  }
+
+  return record.callerNumber ?? record.calleeNumber ?? "—";
+}
+
+function getDirectionSearchText(record: Record): string {
+  const kind = record.directionKind ?? record.direction ?? "unknown";
+  const normalizedKind =
+    kind === "inbound" || kind === "outbound" || kind === "unknown"
+      ? kind
+      : "unknown";
+  const label = getDirectionLabel(normalizedKind);
+
+  return [
+    normalizedKind,
+    label,
+    label.toLowerCase(),
+    "входящий",
+    "исходящий",
+  ].join(" ");
+}
+
+const FUSE_KEYS: { name: keyof SearchRecord; weight: number }[] = [
+  { name: "searchTitle", weight: 0.28 },
+  { name: "searchCounterparty", weight: 0.24 },
+  { name: "searchAgentName", weight: 0.16 },
+  { name: "searchSummary", weight: 0.1 },
+  { name: "searchTranscription", weight: 0.08 },
+  { name: "searchDirection", weight: 0.08 },
+  { name: "searchCallerNumber", weight: 0.03 },
+  { name: "searchCalleeNumber", weight: 0.03 },
+];
+
+const FIELD_LABELS: Partial<{ [K in keyof SearchRecord]: string }> = {
+  searchTitle: "Название",
+  searchCounterparty: "Контрагент",
+  searchAgentName: "Менеджер",
+  searchSummary: "Суммирование",
+  searchTranscription: "Диалог",
+  searchDirection: "Направление",
+  searchCallerNumber: "Номер звонящего",
+  searchCalleeNumber: "Номер вызываемого",
+};
+
+export function SearchModal({
+  open,
+  onOpenChange,
+}: SearchModalProps): React.ReactElement {
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Record | null>(null);
@@ -62,21 +121,38 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps): React.Rea
   );
 
   const searchRecords = useMemo<SearchRecord[]>(
-    () => records.map((r) => ({ ...r, agentName: getAgentName(r, userMap) ?? "" })),
+    () =>
+      records.map((record) => {
+        const agentName = getAgentName(record, userMap) ?? "";
+
+        return {
+          ...record,
+          agentName,
+          searchTitle: getDisplayTitle(record),
+          searchCounterparty: getDisplayCounterparty(record),
+          searchAgentName: agentName,
+          searchSummary: record.summary ?? "",
+          searchTranscription: record.transcription ?? "",
+          searchDirection: getDirectionSearchText(record),
+          searchCallerNumber: record.callerNumber ?? "",
+          searchCalleeNumber: record.calleeNumber ?? "",
+        };
+      }),
     [records, userMap],
-  )
+  );
 
   const fuse = useMemo(
-    () => new Fuse(searchRecords, {
-      keys: FUSE_KEYS,
-      threshold: 0.4,
-      includeScore: true,
-      includeMatches: true,
-      minMatchCharLength: 2,
-      ignoreLocation: true,
-    }),
+    () =>
+      new Fuse(searchRecords, {
+        keys: FUSE_KEYS,
+        threshold: 0.4,
+        includeScore: true,
+        includeMatches: true,
+        minMatchCharLength: 2,
+        ignoreLocation: true,
+      }),
     [searchRecords],
-  )
+  );
 
   useEffect(() => {
     if (!open) {
@@ -90,7 +166,7 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps): React.Rea
   const results = useMemo(() => {
     const q = query.trim();
     if (q.length < 2) return [];
-    return fuse.search(q).slice(0, 20)
+    return fuse.search(q).slice(0, 20);
   }, [fuse, query]);
 
   const hasQuery = query.trim().length >= 2;
@@ -132,7 +208,9 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps): React.Rea
           <div className="overflow-y-auto p-3">
             {!hasQuery ? (
               <p className="py-20 text-center text-sm text-muted-foreground">
-                {query.length === 1 ? "Введите ещё хотя бы один символ" : "Начните вводить текст"}
+                {query.length === 1
+                  ? "Введите ещё хотя бы один символ"
+                  : "Начните вводить текст"}
               </p>
             ) : results.length === 0 ? (
               <p className="py-20 text-center text-sm text-muted-foreground">
@@ -144,11 +222,13 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps): React.Rea
                   Найдено: <strong>{results.length}</strong>
                 </p>
                 {results.map(({ item: record, matches }) => {
-                  const matchedFields = [...new Set(
-                    (matches ?? [])
-                      .map((m) => FIELD_LABELS[m.key as keyof SearchRecord])
-                      .filter(Boolean)
-                  )] as string[]
+                  const matchedFields = [
+                    ...new Set(
+                      (matches ?? [])
+                        .map((m) => FIELD_LABELS[m.key as keyof SearchRecord])
+                        .filter(Boolean),
+                    ),
+                  ] as string[];
 
                   return (
                     <button
@@ -166,14 +246,23 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps): React.Rea
                           {getDisplayTitle(record)}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
-                          {[record.callTo, getAgentName(record, userMap), formatRecordDate(record)]
+                          {[
+                            getDisplayCounterparty(record),
+                            getDirectionLabel(record.directionKind ?? null),
+                            getAgentName(record, userMap),
+                            formatRecordDate(record),
+                          ]
                             .filter(Boolean)
                             .join(" · ")}
                         </p>
                         {matchedFields.length > 0 && (
                           <div className="mt-1.5 flex flex-wrap gap-1">
                             {matchedFields.slice(0, 3).map((label) => (
-                              <Badge key={label} variant="outline" className={cn("text-[10px]")}>
+                              <Badge
+                                key={label}
+                                variant="outline"
+                                className={cn("text-[10px]")}
+                              >
                                 {label}
                               </Badge>
                             ))}
@@ -181,7 +270,7 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps): React.Rea
                         )}
                       </div>
                     </button>
-                  )
+                  );
                 })}
               </div>
             )}

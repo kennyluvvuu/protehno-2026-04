@@ -5,7 +5,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "~/components/ui/sheet";
-import type { Record } from "~/types/record";
+import type { DirectionKind, Record } from "~/types/record";
 
 function formatDuration(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -16,6 +16,28 @@ function formatDuration(sec: number): string {
 function formatRecordDate(record: Record): string | null {
   const value = record.callStartedAt ?? record.startedAt ?? record.finishedAt;
   return value ? new Date(value).toLocaleDateString("ru-RU") : null;
+}
+
+function getDirectionLabel(directionKind?: DirectionKind | null): string {
+  if (directionKind === "inbound") return "Входящий";
+  if (directionKind === "outbound") return "Исходящий";
+  return "Неизвестно";
+}
+
+function getDisplayPhone(record: Record): string | null {
+  if (record.directionKind === "inbound") {
+    return record.callerNumber ?? record.calleeNumber ?? null;
+  }
+
+  if (record.directionKind === "outbound") {
+    return record.calleeNumber ?? record.callerNumber ?? null;
+  }
+
+  return record.callerNumber ?? record.calleeNumber ?? null;
+}
+
+function getDisplayCounterparty(record: Record): string | null {
+  return record.callTo ?? getDisplayPhone(record);
 }
 
 function ReadonlyChecklist({
@@ -88,7 +110,9 @@ export function CallDetailSheet({
 }: CallDetailSheetProps) {
   if (!record) return null;
 
-  const phone = record.callerNumber ?? record.calleeNumber ?? null;
+  const phone = getDisplayPhone(record);
+  const counterparty = getDisplayCounterparty(record);
+  const directionLabel = getDirectionLabel(record.directionKind ?? null);
   const date = formatRecordDate(record);
   const duration = record.durationSec ?? record.talkDurationSec ?? null;
 
@@ -100,7 +124,9 @@ export function CallDetailSheet({
             {record.title ?? `Звонок #${record.id}`}
           </SheetTitle>
           <SheetDescription className="text-sm text-neutral-500">
-            {[record.callTo, phone, date].filter(Boolean).join(" · ")}
+            {[counterparty, phone, directionLabel, date]
+              .filter(Boolean)
+              .join(" · ")}
           </SheetDescription>
 
           {agentName && (
@@ -131,6 +157,19 @@ export function CallDetailSheet({
             {record.source === "mango" && (
               <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
                 <p className="font-medium">Источник: Mango</p>
+                <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                  Направление: {directionLabel}
+                </p>
+                {counterparty && (
+                  <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                    Контрагент: {counterparty}
+                  </p>
+                )}
+                {phone && (
+                  <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                    Номер: {phone}
+                  </p>
+                )}
                 {record.ingestionStatus && (
                   <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
                     Статус получения аудио: {record.ingestionStatus}

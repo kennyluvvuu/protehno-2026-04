@@ -65,6 +65,17 @@ export default function Dashboard() {
   const successRate = total > 0 ? Math.round((done / total) * 100) : 0;
 
   const pendingTasks = useMemo(() => {
+    const getDisplayCounterparty = (record: (typeof records)[number]) => {
+      if (record.callTo) return record.callTo;
+      if (record.directionKind === "inbound") {
+        return record.callerNumber ?? record.calleeNumber ?? null;
+      }
+      if (record.directionKind === "outbound") {
+        return record.calleeNumber ?? record.callerNumber ?? null;
+      }
+      return record.callerNumber ?? record.calleeNumber ?? null;
+    };
+
     return records
       .flatMap((record) =>
         (record.checkboxes?.tasks ?? [])
@@ -72,7 +83,7 @@ export default function Dashboard() {
           .map((t) => ({
             text: t.label,
             recordTitle: record.title ?? `Звонок #${record.id}`,
-            callTo: record.callTo,
+            callTo: getDisplayCounterparty(record),
           })),
       )
       .slice(0, 5);

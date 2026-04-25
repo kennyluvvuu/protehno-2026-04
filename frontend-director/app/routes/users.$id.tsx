@@ -617,7 +617,18 @@ export default function UserDetailPage() {
                         {record.title ?? `Звонок #${record.id}`}
                       </TableCell>
                       <TableCell className="text-neutral-500">
-                        {record.callTo ?? "—"}
+                        {record.callTo ??
+                          (record.directionKind === "inbound"
+                            ? (record.callerNumber ??
+                              record.calleeNumber ??
+                              "—")
+                            : record.directionKind === "outbound"
+                              ? (record.calleeNumber ??
+                                record.callerNumber ??
+                                "—")
+                              : (record.callerNumber ??
+                                record.calleeNumber ??
+                                "—"))}
                       </TableCell>
                       <TableCell className="text-sm text-neutral-500">
                         {formatRecordDate(record)}

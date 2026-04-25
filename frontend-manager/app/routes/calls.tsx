@@ -39,7 +39,13 @@ import { usePagination } from "~/hooks/usePagination";
 import { useRecords } from "~/hooks/useRecords";
 import { cn } from "~/lib/cn";
 import { healthApi } from "~/axios/health";
-import type { Record, RecordStatus, SortDir, SortField } from "~/types/record";
+import type {
+  DirectionKind,
+  Record,
+  RecordStatus,
+  SortDir,
+  SortField,
+} from "~/types/record";
 
 type StatusFilter = RecordStatus | "all";
 
@@ -78,6 +84,34 @@ function formatDuration(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function getDirectionLabel(directionKind?: DirectionKind | null): string {
+  if (directionKind === "inbound") return "Входящий";
+  if (directionKind === "outbound") return "Исходящий";
+  return "Неизвестно";
+}
+
+function getDirectionSearchText(record: Record): string {
+  const kind = record.directionKind ?? record.direction ?? "unknown";
+  const label = getDirectionLabel(
+    kind === "inbound" || kind === "outbound" || kind === "unknown"
+      ? kind
+      : "unknown",
+  );
+
+  return [kind, label, label.toLowerCase(), "входящий", "исходящий"].join(" ");
+}
+
+function getDisplayCounterparty(record: Record): string {
+  if (record.callTo) return record.callTo;
+  if (record.directionKind === "inbound") {
+    return record.callerNumber ?? record.calleeNumber ?? "—";
+  }
+  if (record.directionKind === "outbound") {
+    return record.calleeNumber ?? record.callerNumber ?? "—";
+  }
+  return record.callerNumber ?? record.calleeNumber ?? "—";
 }
 
 function fmtDate(iso: string): string {
@@ -156,13 +190,13 @@ export default function Calls() {
     return records.map((record) => ({
       ...record,
       searchTitle: record.title ?? "",
-      searchCallTo: record.callTo ?? "",
+      searchCallTo: getDisplayCounterparty(record),
       searchSummary: record.summary ?? "",
       searchTranscription: record.transcription ?? "",
       searchCallerNumber: record.callerNumber ?? "",
       searchCalleeNumber: record.calleeNumber ?? "",
       searchSource: record.source ?? "",
-      searchDirection: record.direction ?? "",
+      searchDirection: getDirectionSearchText(record),
       searchTags: record.tags.join(" "),
     }));
   }, [records]);
@@ -199,7 +233,10 @@ export default function Calls() {
       if (sortField === "title")
         return dir * (a.title ?? "").localeCompare(b.title ?? "");
       if (sortField === "callTo")
-        return dir * (a.callTo ?? "").localeCompare(b.callTo ?? "");
+        return (
+          dir *
+          getDisplayCounterparty(a).localeCompare(getDisplayCounterparty(b))
+        );
       if (sortField === "durationSec")
         return dir * ((a.durationSec ?? 0) - (b.durationSec ?? 0));
       return dir * (a.startedAt ?? "").localeCompare(b.startedAt ?? "");
@@ -436,7 +473,12 @@ export default function Calls() {
                     {r.title ?? `Звонок #${r.id}`}
                   </TableCell>
                   <TableCell className="text-neutral-600 dark:text-neutral-400">
-                    {r.callTo ?? "—"}
+                    <div className="flex flex-col gap-1">
+                      <span>{getDisplayCounterparty(r)}</span>
+                      <span className="text-xs text-neutral-400">
+                        {getDirectionLabel(r.directionKind ?? null)}
+                      </span>
+                    </div>
                   </TableCell>
                   <TableCell className="text-neutral-500 text-sm">
                     {r.startedAt

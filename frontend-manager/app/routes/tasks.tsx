@@ -240,7 +240,23 @@ export default function TasksPage(): React.ReactElement {
                         </div>
                         <p className="mt-1 text-xs text-neutral-500">
                           {task.record.title ?? `Звонок #${task.record.id}`}
-                          {task.record.callTo ? ` · ${task.record.callTo}` : ""}
+                          {(() => {
+                            const counterparty =
+                              task.record.callTo ??
+                              (task.record.directionKind === "inbound"
+                                ? (task.record.callerNumber ??
+                                  task.record.calleeNumber ??
+                                  null)
+                                : task.record.directionKind === "outbound"
+                                  ? (task.record.calleeNumber ??
+                                    task.record.callerNumber ??
+                                    null)
+                                  : (task.record.callerNumber ??
+                                    task.record.calleeNumber ??
+                                    null));
+
+                            return counterparty ? ` · ${counterparty}` : "";
+                          })()}
                           {task.date
                             ? ` · ${new Date(task.date).toLocaleDateString("ru-RU")}`
                             : ""}

@@ -38,7 +38,13 @@ import { usePagination } from "~/hooks/usePagination";
 import { useRecords } from "~/hooks/useRecords";
 import { useUsers } from "~/hooks/useUsers";
 import { cn } from "~/lib/utils";
-import type { Record, RecordStatus, SortDir, SortField } from "~/types/record";
+import type {
+  DirectionKind,
+  Record,
+  RecordStatus,
+  SortDir,
+  SortField,
+} from "~/types/record";
 
 type StatusFilter = RecordStatus | "all";
 
@@ -64,7 +70,7 @@ const FUSE_KEYS: { name: keyof SearchableRecord; weight: number }[] = [
   { name: "transcription", weight: 0.1 },
   { name: "callerNumber", weight: 0.05 },
   { name: "calleeNumber", weight: 0.05 },
-  { name: "direction", weight: 0.02 },
+  { name: "directionKind", weight: 0.02 },
   { name: "source", weight: 0.02 },
 ];
 
@@ -72,6 +78,26 @@ function formatDuration(sec: number): string {
   const minutes = Math.floor(sec / 60);
   const seconds = sec % 60;
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function getDirectionLabel(directionKind?: DirectionKind | null): string {
+  if (directionKind === "inbound") return "Входящий";
+  if (directionKind === "outbound") return "Исходящий";
+  return "Неизвестно";
+}
+
+function getDisplayCounterparty(record: Record): string {
+  if (record.callTo) return record.callTo;
+
+  if (record.directionKind === "inbound") {
+    return record.callerNumber ?? record.calleeNumber ?? "—";
+  }
+
+  if (record.directionKind === "outbound") {
+    return record.calleeNumber ?? record.callerNumber ?? "—";
+  }
+
+  return record.callerNumber ?? record.calleeNumber ?? "—";
 }
 
 function formatShortDate(iso: string): string {
@@ -107,14 +133,23 @@ function getDisplayAgentName(
 }
 
 function buildSearchText(record: Record, agentName: string): string {
+  const directionKind = record.directionKind ?? record.direction ?? "unknown";
+  const normalizedDirectionKind =
+    directionKind === "inbound" ||
+    directionKind === "outbound" ||
+    directionKind === "unknown"
+      ? directionKind
+      : "unknown";
+
   return [
     getDisplayTitle(record),
-    record.callTo,
+    getDisplayCounterparty(record),
     record.summary,
     record.transcription,
     record.callerNumber,
     record.calleeNumber,
-    record.direction,
+    normalizedDirectionKind,
+    getDirectionLabel(normalizedDirectionKind),
     record.source,
     record.tags.join(" "),
     agentName,
@@ -273,7 +308,13 @@ export default function Calls() {
       }
 
       if (sortField === "callTo") {
-        return dir * (a.callTo ?? "").localeCompare(b.callTo ?? "", "ru");
+        return (
+          dir *
+          getDisplayCounterparty(a).localeCompare(
+            getDisplayCounterparty(b),
+            "ru",
+          )
+        );
       }
 
       if (sortField === "durationSec") {
@@ -535,7 +576,12 @@ export default function Calls() {
                       {getDisplayTitle(record)}
                     </TableCell>
                     <TableCell className="text-neutral-600 dark:text-neutral-400">
-                      {record.callTo ?? "—"}
+                      <div className="flex flex-col gap-1">
+                        <span>{getDisplayCounterparty(record)}</span>
+                        <span className="text-xs text-neutral-400">
+                          {getDirectionLabel(record.directionKind ?? null)}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-neutral-600 dark:text-neutral-400">
                       {agentName}

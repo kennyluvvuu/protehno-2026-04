@@ -14,25 +14,27 @@ import {
 import { useRecords } from "~/hooks/useRecords";
 import { useUsers } from "~/hooks/useUsers";
 import { cn } from "~/lib/utils";
-import type { Record } from "~/types/record";
+import type { DirectionKind, Record } from "~/types/record";
 
 type SearchField =
-  | "callTo"
+  | "counterparty"
   | "name"
   | "transcription"
   | "summary"
-  | "agentName";
+  | "agentName"
+  | "direction";
 
 type SearchResultRecord = Record & {
   agentName: string;
 };
 
 const SEARCH_FIELDS: { value: SearchField; label: string }[] = [
-  { value: "callTo", label: "По контрагенту" },
+  { value: "counterparty", label: "По контрагенту" },
   { value: "name", label: "По названию" },
   { value: "agentName", label: "По агенту" },
   { value: "transcription", label: "По тексту диалога" },
   { value: "summary", label: "По суммированию" },
+  { value: "direction", label: "По направлению" },
 ];
 
 function getDisplayName(record: Record): string {
@@ -44,12 +46,48 @@ function getAgentName(record: Record, userMap: Map<number, string>): string {
   return userMap.get(record.userId) ?? "Неизвестный менеджер";
 }
 
+function getDirectionLabel(directionKind?: DirectionKind | null): string {
+  if (directionKind === "inbound") return "Входящий";
+  if (directionKind === "outbound") return "Исходящий";
+  return "Неизвестно";
+}
+
+function getDisplayCounterparty(record: Record): string {
+  if (record.callTo) return record.callTo;
+
+  if (record.directionKind === "inbound") {
+    return record.callerNumber ?? record.calleeNumber ?? "—";
+  }
+
+  if (record.directionKind === "outbound") {
+    return record.calleeNumber ?? record.callerNumber ?? "—";
+  }
+
+  return record.callerNumber ?? record.calleeNumber ?? "—";
+}
+
 function getSearchValue(
   record: SearchResultRecord,
   field: SearchField,
 ): string {
   if (field === "name") return getDisplayName(record);
   if (field === "agentName") return record.agentName;
+  if (field === "counterparty") return getDisplayCounterparty(record);
+  if (field === "direction") {
+    const kind = record.directionKind ?? record.direction ?? "unknown";
+    const normalizedKind =
+      kind === "inbound" || kind === "outbound" || kind === "unknown"
+        ? kind
+        : "unknown";
+
+    return [
+      normalizedKind,
+      getDirectionLabel(normalizedKind),
+      "входящий",
+      "исходящий",
+    ].join(" ");
+  }
+
   return String(record[field] ?? "");
 }
 
@@ -132,8 +170,12 @@ function ResultCard({
               {highlight(displayName, field === "name" ? query : "")}
             </p>
             <p className="mt-0.5 text-xs text-neutral-500">
-              {highlight(record.callTo ?? "—", field === "callTo" ? query : "")}{" "}
+              {highlight(
+                getDisplayCounterparty(record),
+                field === "counterparty" ? query : "",
+              )}{" "}
               · {record.agentName} ·{" "}
+              {getDirectionLabel(record.directionKind ?? null)} ·{" "}
               {formatDate(record.callStartedAt ?? record.startedAt)}
             </p>
           </div>
@@ -166,7 +208,7 @@ function ResultCard({
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
-  const [field, setField] = useState<SearchField>("callTo");
+  const [field, setField] = useState<SearchField>("counterparty");
 
   const { data: records = [] } = useRecords();
   const { data: users = [] } = useUsers();
@@ -182,15 +224,14 @@ export default function SearchPage() {
   );
 
   const fuse = useMemo(
-    () => new Fuse(searchRecords, {
-      keys: [
-        { name: field, weight: 1 },
-      ],
-      threshold: 0.4,
-      includeScore: true,
-      minMatchCharLength: 2,
-      ignoreLocation: true,
-    }),
+    () =>
+      new Fuse(searchRecords, {
+        keys: [{ name: field, weight: 1 }],
+        threshold: 0.4,
+        includeScore: true,
+        minMatchCharLength: 2,
+        ignoreLocation: true,
+      }),
     [searchRecords, field],
   );
 

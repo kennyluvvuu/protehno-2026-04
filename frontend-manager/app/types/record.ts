@@ -12,6 +12,7 @@ export type IngestionStatus =
   | "no_audio"
   | "failed";
 export type RecordSource = "manual" | "mango";
+export type DirectionKind = "inbound" | "outbound" | "unknown";
 
 export interface CheckboxItem {
   label: string;
@@ -36,6 +37,7 @@ export interface Record {
   mangoCommunicationId?: string | null;
   mangoUserId?: number | null;
   direction?: string | null;
+  directionKind?: DirectionKind | null;
   callerNumber?: string | null;
   calleeNumber?: string | null;
   lineNumber?: string | null;
