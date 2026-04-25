@@ -46,3 +46,6 @@ export interface UploadResponse {
     status: RecordStatus
     message: string
 }
+
+export type SortField = "title" | "callTo" | "durationSec" | "startedAt"
+export type SortDir = "asc" | "desc"

@@ -1,4 +1,4 @@
-import { count, eq, gte, sql } from "drizzle-orm";
+import { and, count, eq, gte, lt, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { recordTable } from "../records/model";
 import { userTable } from "../user/model";
@@ -9,6 +9,29 @@ type StatsOverview = {
     failedRecords: number;
     avgQualityScore: number | null;
     totalManagers: number;
+};
+
+type StatsPeriod = "7d" | "14d" | "30d";
+
+const normalizePeriod = (period?: string): StatsPeriod =>
+    period === "14d" || period === "30d" ? period : "7d";
+
+const getPeriodRange = (period?: string) => {
+    const normalizedPeriod = normalizePeriod(period);
+    const days = Number.parseInt(normalizedPeriod, 10);
+
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - (days - 1));
+
+    const end = new Date(start);
+    end.setDate(start.getDate() + days);
+
+    return {
+        days,
+        start,
+        end,
+    };
 };
 
 type WeeklyStatsItem = {
@@ -27,7 +50,10 @@ type AgentStatsItem = {
 export class StatsService {
     constructor(private readonly db: NodePgDatabase) {}
 
-    async getOverview(): Promise<StatsOverview> {
+    async getOverview(period?: string): Promise<StatsOverview> {
+        const { start, end } = getPeriodRange(period);
+        const activityAt = sql`coalesce(${recordTable.callStartedAt}, ${recordTable.finishedAt}, ${recordTable.startedAt})`;
+
         const [recordsAggregate] = await this.db
             .select({
                 totalRecords: count(recordTable.id),
@@ -37,7 +63,8 @@ export class StatsService {
                     number | null
                 >`round(avg(${recordTable.qualityScore})::numeric, 1)`,
             })
-            .from(recordTable);
+            .from(recordTable)
+            .where(and(gte(activityAt, start), lt(activityAt, end)));
 
         const [managersAggregate] = await this.db
             .select({
@@ -59,31 +86,20 @@ export class StatsService {
         };
     }
 
-    async getWeekly(): Promise<WeeklyStatsItem[]> {
-        const today = new Date();
-        const start = new Date(today);
-        start.setHours(0, 0, 0, 0);
-        start.setDate(start.getDate() - 6);
+    async getWeekly(period?: string): Promise<WeeklyStatsItem[]> {
+        const { days, start, end } = getPeriodRange(period);
+        const activityAt = sql`coalesce(${recordTable.callStartedAt}, ${recordTable.finishedAt}, ${recordTable.startedAt})`;
 
         const rows = await this.db
             .select({
-                date: sql<string>`to_char(date_trunc('day', coalesce(${recordTable.callStartedAt}, ${recordTable.finishedAt}, ${recordTable.startedAt})), 'YYYY-MM-DD')`,
+                date: sql<string>`to_char(date_trunc('day', ${activityAt}), 'YYYY-MM-DD')`,
                 total: count(recordTable.id),
                 done: sql<number>`count(*) filter (where ${recordTable.status} = 'done')`,
             })
             .from(recordTable)
-            .where(
-                gte(
-                    sql`coalesce(${recordTable.callStartedAt}, ${recordTable.finishedAt}, ${recordTable.startedAt})`,
-                    start,
-                ),
-            )
-            .groupBy(
-                sql`date_trunc('day', coalesce(${recordTable.callStartedAt}, ${recordTable.finishedAt}, ${recordTable.startedAt}))`,
-            )
-            .orderBy(
-                sql`date_trunc('day', coalesce(${recordTable.callStartedAt}, ${recordTable.finishedAt}, ${recordTable.startedAt})) asc`,
-            );
+            .where(and(gte(activityAt, start), lt(activityAt, end)))
+            .groupBy(sql`date_trunc('day', ${activityAt})`)
+            .orderBy(sql`date_trunc('day', ${activityAt}) asc`);
 
         const byDate = new Map<string, WeeklyStatsItem>(
             rows.map((row) => [
@@ -98,7 +114,7 @@ export class StatsService {
 
         const result: WeeklyStatsItem[] = [];
 
-        for (let i = 0; i < 7; i++) {
+        for (let i = 0; i < days; i++) {
             const date = new Date(start);
             date.setDate(start.getDate() + i);
             const key = date.toISOString().slice(0, 10);
@@ -115,7 +131,10 @@ export class StatsService {
         return result;
     }
 
-    async getByAgent(): Promise<AgentStatsItem[]> {
+    async getByAgent(period?: string): Promise<AgentStatsItem[]> {
+        const { start, end } = getPeriodRange(period);
+        const activityAt = sql`coalesce(${recordTable.callStartedAt}, ${recordTable.finishedAt}, ${recordTable.startedAt})`;
+
         const rows = await this.db
             .select({
                 userId: userTable.id,
@@ -127,7 +146,14 @@ export class StatsService {
                 >`round(avg(${recordTable.qualityScore})::numeric, 1)`,
             })
             .from(userTable)
-            .leftJoin(recordTable, eq(recordTable.userId, userTable.id))
+            .leftJoin(
+                recordTable,
+                and(
+                    eq(recordTable.userId, userTable.id),
+                    gte(activityAt, start),
+                    lt(activityAt, end),
+                ),
+            )
             .where(eq(userTable.role, "manager"))
             .groupBy(userTable.id, userTable.fio, userTable.name)
             .orderBy(sql`count(${recordTable.id}) desc`, userTable.name);

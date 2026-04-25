@@ -1,4 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import {
   ArrowUpDown,
   Loader2,
@@ -10,7 +11,7 @@ import {
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate, useOutletContext } from "react-router";
-import type { User } from "~/types/auth";
+import { PageHeader } from "~/components/layout";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import {
@@ -32,10 +33,31 @@ import {
 import { useCreateUser, useUsers } from "~/hooks/useUsers";
 import { createUserSchema, type CreateUserSchema } from "~/schemas/user";
 import { cn } from "~/lib/utils";
-import { PageHeader } from "~/components/layout";
+import type { User } from "~/types/auth";
 
 type SortField = "name" | "email";
 type SortDir = "asc" | "desc";
+
+const createManagerSchema = createUserSchema.extend({
+  fio: z.string().trim().optional(),
+  mangoUserId: z.string().trim().optional(),
+});
+
+type CreateManagerFormValues = {
+  name: string;
+  email: string;
+  password: string;
+  fio?: string;
+  mangoUserId?: string;
+};
+
+function getDisplayName(user: Pick<User, "name" | "fio">): string {
+  return user.fio?.trim() || user.name;
+}
+
+function getInitial(user: Pick<User, "name" | "fio">): string {
+  return getDisplayName(user).charAt(0).toUpperCase();
+}
 
 function AddUserDialog({
   open,
@@ -51,26 +73,43 @@ function AddUserDialog({
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<CreateUserSchema>({
-    resolver: zodResolver(createUserSchema),
-    defaultValues: { name: "", email: "", password: "" },
+  } = useForm<CreateManagerFormValues>({
+    resolver: zodResolver(createManagerSchema),
+    defaultValues: {
+      name: "",
+      email: "",
+      password: "",
+      fio: "",
+      mangoUserId: "",
+    },
   });
 
-  const onSubmit = async (data: CreateUserSchema): Promise<void> => {
+  const onSubmit = async (data: CreateManagerFormValues): Promise<void> => {
     try {
-      await mutateAsync({ ...data, role: "manager" });
+      const fio = (data.fio ?? "").trim();
+      const mangoRaw = (data.mangoUserId ?? "").trim();
+
+      await mutateAsync({
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        role: "manager",
+        fio: fio ? fio : null,
+        mangoUserId: mangoRaw ? Number(mangoRaw) : null,
+      });
+
       reset();
       onClose();
     } catch {
-      // toast shown in hook
+      // toast handled in hook
     }
   };
 
   return (
     <Dialog
       open={open}
-      onOpenChange={(v) => {
-        if (!v) {
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
           reset();
           onClose();
         }
@@ -80,6 +119,7 @@ function AddUserDialog({
         <DialogHeader>
           <DialogTitle>Добавить менеджера</DialogTitle>
         </DialogHeader>
+
         <form
           onSubmit={handleSubmit(onSubmit)}
           noValidate
@@ -88,11 +128,20 @@ function AddUserDialog({
           <Field label="Имя" htmlFor="name" error={errors.name?.message}>
             <Input
               id="name"
-              placeholder="Иванов Алексей"
+              placeholder="manager01"
               {...register("name")}
               hasError={!!errors.name}
             />
           </Field>
+
+          <Field label="ФИО" htmlFor="fio">
+            <Input
+              id="fio"
+              placeholder="Иванов Алексей Петрович"
+              {...register("fio")}
+            />
+          </Field>
+
           <Field label="Email" htmlFor="email" error={errors.email?.message}>
             <Input
               id="email"
@@ -102,6 +151,26 @@ function AddUserDialog({
               hasError={!!errors.email}
             />
           </Field>
+
+          <Field
+            label="Mango User ID"
+            htmlFor="mangoUserId"
+            error={errors.mangoUserId?.message}
+          >
+            <Input
+              id="mangoUserId"
+              inputMode="numeric"
+              placeholder="12345"
+              {...register("mangoUserId", {
+                validate: (value) =>
+                  !(value ?? "").trim() ||
+                  /^\d+$/.test((value ?? "").trim()) ||
+                  "Введите числовой Mango ID",
+              })}
+              hasError={!!errors.mangoUserId}
+            />
+          </Field>
+
           <Field
             label="Пароль"
             htmlFor="password"
@@ -115,6 +184,7 @@ function AddUserDialog({
               hasError={!!errors.password}
             />
           </Field>
+
           <div className="flex justify-end gap-2 pt-2">
             <Button
               type="button"
@@ -126,6 +196,7 @@ function AddUserDialog({
             >
               Отмена
             </Button>
+
             <Button type="submit" disabled={isPending}>
               {isPending ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -146,7 +217,8 @@ export default function UsersPage() {
   const { user: currentUser } = useOutletContext<{ user: User }>();
   const navigate = useNavigate();
   const { data: allUsers = [], isLoading } = useUsers();
-  const users = allUsers.filter((u) => u.id !== currentUser.id);
+  const users = allUsers.filter((user) => user.id !== currentUser.id);
+
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<{ field: SortField; dir: SortDir }>({
     field: "name",
@@ -155,18 +227,36 @@ export default function UsersPage() {
   const [addOpen, setAddOpen] = useState(false);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    let list = users.filter(
-      (u) =>
+    const q = search.trim().toLowerCase();
+
+    let list = users.filter((user) => {
+      const displayName = getDisplayName(user).toLowerCase();
+      const fio = (user.fio ?? "").toLowerCase();
+      const name = user.name.toLowerCase();
+      const email = user.email.toLowerCase();
+      const mangoUserId =
+        user.mangoUserId != null ? String(user.mangoUserId) : "";
+
+      return (
         !q ||
-        u.name.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q),
-    );
+        displayName.includes(q) ||
+        fio.includes(q) ||
+        name.includes(q) ||
+        email.includes(q) ||
+        mangoUserId.includes(q)
+      );
+    });
+
     list = [...list].sort((a, b) => {
       const dir = sort.dir === "asc" ? 1 : -1;
-      if (sort.field === "name") return dir * a.name.localeCompare(b.name);
-      return dir * a.email.localeCompare(b.email);
+
+      if (sort.field === "name") {
+        return dir * getDisplayName(a).localeCompare(getDisplayName(b), "ru");
+      }
+
+      return dir * a.email.localeCompare(b.email, "ru");
     });
+
     return list;
   }, [users, search, sort]);
 
@@ -181,7 +271,7 @@ export default function UsersPage() {
   const SortIcon = ({ field }: { field: SortField }) => (
     <ArrowUpDown
       className={cn(
-        "ml-1 size-3 inline",
+        "ml-1 inline size-3",
         sort.field === field
           ? "text-neutral-800 dark:text-neutral-200"
           : "text-neutral-300",
@@ -206,19 +296,17 @@ export default function UsersPage() {
         }
       />
 
-      {/* Search */}
-      <div className="mb-4 relative max-w-sm">
+      <div className="relative mb-4 max-w-sm">
         <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
         <Input
-          placeholder="Поиск по имени или email…"
+          placeholder="Поиск по имени, ФИО, email или Mango ID…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-9"
         />
       </div>
 
-      {/* Table */}
-      <div className="rounded-xl border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-700">
         <Table>
           <TableHeader>
             <TableRow className="bg-neutral-50/80 dark:bg-neutral-900/80">
@@ -234,19 +322,21 @@ export default function UsersPage() {
               >
                 Email <SortIcon field="email" />
               </TableHead>
+              <TableHead>Mango ID</TableHead>
               <TableHead>Роль</TableHead>
             </TableRow>
           </TableHeader>
+
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={3} className="py-16 text-center">
+                <TableCell colSpan={4} className="py-16 text-center">
                   <Loader2 className="mx-auto size-6 animate-spin text-neutral-400" />
                 </TableCell>
               </TableRow>
             ) : filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3} className="py-16 text-center">
+                <TableCell colSpan={4} className="py-16 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <Users className="size-8 text-neutral-300" />
                     <p className="text-sm text-neutral-500">
@@ -267,30 +357,49 @@ export default function UsersPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((user) => (
-                <TableRow
-                  key={user.id}
-                  className="cursor-pointer hover:bg-neutral-50/60 dark:hover:bg-neutral-900/40"
-                  onClick={() => navigate(`/users/${user.id}`)}
-                >
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-sm font-semibold text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
-                        {user.name.charAt(0).toUpperCase()}
+              filtered.map((user) => {
+                const displayName = getDisplayName(user);
+
+                return (
+                  <TableRow
+                    key={user.id}
+                    className="cursor-pointer hover:bg-neutral-50/60 dark:hover:bg-neutral-900/40"
+                    onClick={() => navigate(`/users/${user.id}`)}
+                  >
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-sm font-semibold text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+                          {getInitial(user)}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="block truncate font-medium">
+                            {displayName}
+                          </span>
+                          {user.fio && user.fio !== user.name && (
+                            <span className="block truncate text-xs text-neutral-400">
+                              Логин: {user.name}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <span className="font-medium">{user.name}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-neutral-500">
-                    {user.email}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="text-xs">
-                      Менеджер
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))
+                    </TableCell>
+
+                    <TableCell className="text-neutral-500">
+                      {user.email}
+                    </TableCell>
+
+                    <TableCell className="text-neutral-500">
+                      {user.mangoUserId ?? "—"}
+                    </TableCell>
+
+                    <TableCell>
+                      <Badge variant="secondary" className="text-xs">
+                        {user.role === "director" ? "Директор" : "Менеджер"}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
