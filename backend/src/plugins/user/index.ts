@@ -19,7 +19,7 @@ const assertDirector = (userRole: UserRole) => {
     return userRole === "director";
 };
 
-const userParamsSchema = z.object({ id: z.number() });
+const userParamsSchema = z.object({ id: z.coerce.number().int().positive() });
 
 export const userPlugin = (
     userService: UserService,

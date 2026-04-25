@@ -1,10 +1,35 @@
-import { ArrowLeft, FileAudio, Loader2, Mail, Phone, Star } from "lucide-react";
-import { useMemo, useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  ArrowLeft,
+  FileAudio,
+  Loader2,
+  Mail,
+  Phone,
+  Save,
+  Star,
+  Trash2,
+  UserCog,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
 import { useNavigate, useParams } from "react-router";
+import { z } from "zod";
 import { CallDetailSheet } from "~/components/calls/call-detail-sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "~/components/ui/alert-dialog";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import { Field } from "~/components/ui/field";
+import { Input } from "~/components/ui/input";
 import {
   Table,
   TableBody,
@@ -14,9 +39,26 @@ import {
   TableRow,
 } from "~/components/ui/table";
 import { useRecords } from "~/hooks/useRecords";
-import { useUsers } from "~/hooks/useUsers";
+import { useDeleteUser, useUpdateUser, useUsers } from "~/hooks/useUsers";
 import { cn } from "~/lib/utils";
+import type { User } from "~/types/auth";
 import type { Record, RecordStatus } from "~/types/record";
+
+const editUserSchema = z.object({
+  name: z.string().trim().min(2, { message: "Минимум 2 символа" }),
+  fio: z.string().trim().optional(),
+  email: z.string().trim().email({ message: "Некорректный email" }),
+  mangoUserId: z
+    .string()
+    .trim()
+    .optional()
+    .refine((value) => !value || /^\d+$/.test(value), {
+      message: "Введите числовой Mango ID",
+    }),
+  role: z.enum(["director", "manager"]),
+});
+
+type EditUserFormValues = z.infer<typeof editUserSchema>;
 
 function StatusBadge({ status }: { status: RecordStatus }) {
   if (status === "done") {
@@ -74,9 +116,9 @@ function StatItem({ label, value }: { label: string; value: string | number }) {
 }
 
 function formatDuration(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
+  const minutes = Math.floor(sec / 60);
+  const seconds = sec % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 function getDisplayName(name: string, fio: string | null): string {
@@ -92,6 +134,10 @@ function formatRecordDate(record: Record): string {
   return value ? new Date(value).toLocaleDateString("ru-RU") : "—";
 }
 
+function getDisplayDuration(record: Record): number | null {
+  return record.durationSec ?? record.talkDurationSec ?? null;
+}
+
 function formatQuality(value: number | null | undefined): string {
   return value == null ? "—" : `${Math.round(value)}%`;
 }
@@ -100,16 +146,51 @@ function formatMangoUserId(value: number | null): string {
   return value == null ? "Mango ID не привязан" : `Mango ID: ${value}`;
 }
 
+function toFormValues(user: User): EditUserFormValues {
+  return {
+    name: user.name,
+    fio: user.fio ?? "",
+    email: user.email,
+    mangoUserId: user.mangoUserId != null ? String(user.mangoUserId) : "",
+    role: user.role,
+  };
+}
+
 export default function UserDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [selected, setSelected] = useState<Record | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const { data: users = [], isLoading: usersLoading } = useUsers();
   const { data: records = [], isLoading: recordsLoading } = useRecords();
+  const updateUser = useUpdateUser();
+  const deleteUser = useDeleteUser();
 
   const userId = id ? Number.parseInt(id, 10) : null;
   const user = users.find((item) => item.id === userId);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isDirty, isSubmitting },
+  } = useForm<EditUserFormValues>({
+    resolver: zodResolver(editUserSchema),
+    defaultValues: {
+      name: "",
+      fio: "",
+      email: "",
+      mangoUserId: "",
+      role: "manager",
+    },
+  });
+
+  useEffect(() => {
+    if (user) {
+      reset(toFormValues(user));
+    }
+  }, [user, reset]);
 
   const userRecords = useMemo(
     () => records.filter((record) => record.userId === userId),
@@ -144,7 +225,7 @@ export default function UserDetailPage() {
     );
   }
 
-  if (!user) {
+  if (!user || userId == null) {
     return (
       <div className="flex flex-col items-center gap-3 py-32 text-center">
         <p className="text-sm text-neutral-500">Пользователь не найден</p>
@@ -156,6 +237,27 @@ export default function UserDetailPage() {
   }
 
   const displayName = getDisplayName(user.name, user.fio);
+
+  const onSubmit = async (values: EditUserFormValues): Promise<void> => {
+    await updateUser.mutateAsync({
+      id: user.id,
+      data: {
+        name: values.name.trim(),
+        fio: values.fio?.trim() ? values.fio.trim() : null,
+        email: values.email.trim(),
+        mangoUserId: values.mangoUserId?.trim()
+          ? Number(values.mangoUserId.trim())
+          : null,
+        role: values.role,
+      },
+    });
+  };
+
+  const handleDelete = async (): Promise<void> => {
+    await deleteUser.mutateAsync({ id: user.id });
+    setDeleteOpen(false);
+    navigate("/users", { replace: true });
+  };
 
   return (
     <div>
@@ -223,6 +325,154 @@ export default function UserDetailPage() {
         </Card>
       </div>
 
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <UserCog className="size-4" />
+              Управление пользователем
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent>
+            <form
+              onSubmit={handleSubmit(onSubmit)}
+              noValidate
+              className="flex flex-col gap-4"
+            >
+              <Field label="Логин" htmlFor="name" error={errors.name?.message}>
+                <Input
+                  id="name"
+                  placeholder="manager01"
+                  hasError={!!errors.name}
+                  {...register("name")}
+                />
+              </Field>
+
+              <Field label="ФИО" htmlFor="fio" error={errors.fio?.message}>
+                <Input
+                  id="fio"
+                  placeholder="Иванов Иван Иванович"
+                  hasError={!!errors.fio}
+                  {...register("fio")}
+                />
+              </Field>
+
+              <Field
+                label="Email"
+                htmlFor="email"
+                error={errors.email?.message}
+              >
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="manager@example.com"
+                  hasError={!!errors.email}
+                  {...register("email")}
+                />
+              </Field>
+
+              <Field
+                label="Mango User ID"
+                htmlFor="mangoUserId"
+                error={errors.mangoUserId?.message}
+              >
+                <Input
+                  id="mangoUserId"
+                  inputMode="numeric"
+                  placeholder="12345"
+                  hasError={!!errors.mangoUserId}
+                  {...register("mangoUserId")}
+                />
+              </Field>
+
+              <Field label="Роль" htmlFor="role" error={errors.role?.message}>
+                <select
+                  id="role"
+                  className={cn(
+                    "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  )}
+                  {...register("role")}
+                >
+                  <option value="manager">Менеджер</option>
+                  <option value="director">Директор</option>
+                </select>
+              </Field>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => reset(toFormValues(user))}
+                  disabled={!isDirty || isSubmitting || updateUser.isPending}
+                >
+                  Сбросить
+                </Button>
+
+                <Button
+                  type="submit"
+                  disabled={!isDirty || isSubmitting || updateUser.isPending}
+                  className="gap-2"
+                >
+                  {updateUser.isPending || isSubmitting ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Save className="size-4" />
+                  )}
+                  Сохранить
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">
+              Опасные действия
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="flex flex-col gap-4">
+            <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-700">
+              <p className="text-sm font-medium">Удаление пользователя</p>
+              <p className="mt-1 text-xs text-neutral-500">
+                Backend не даст удалить самого себя или последнего директора.
+                Записи пользователя сохранятся, а `userId` у них станет `null`.
+              </p>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-4 gap-2 text-red-600 hover:text-red-700"
+                onClick={() => setDeleteOpen(true)}
+                disabled={deleteUser.isPending}
+              >
+                {deleteUser.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Trash2 className="size-4" />
+                )}
+                Удалить пользователя
+              </Button>
+            </div>
+
+            <div className="rounded-lg border border-neutral-200 p-4 text-xs text-neutral-500 dark:border-neutral-700">
+              <p>
+                Привязка `Mango User ID` в форме выше использует backend
+                endpoint обновления пользователя и позволяет:
+              </p>
+              <ul className="mt-2 list-disc space-y-1 pl-4">
+                <li>назначать Mango ID менеджеру</li>
+                <li>изменять привязку</li>
+                <li>снимать привязку, если очистить поле</li>
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="mt-6">
         <h2 className="mb-3 text-sm font-medium text-neutral-700 dark:text-neutral-300">
           Звонки менеджера
@@ -256,37 +506,41 @@ export default function UserDetailPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                userRecords.map((record) => (
-                  <TableRow
-                    key={record.id}
-                    className="cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
-                    onClick={() => setSelected(record)}
-                  >
-                    <TableCell className="max-w-48 truncate font-medium">
-                      {record.title ?? `Звонок #${record.id}`}
-                    </TableCell>
-                    <TableCell className="text-neutral-500">
-                      {record.callTo ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-sm text-neutral-500">
-                      {formatRecordDate(record)}
-                    </TableCell>
-                    <TableCell className="text-sm tabular-nums text-neutral-500">
-                      {record.durationSec != null
-                        ? formatDuration(record.durationSec)
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="text-sm text-neutral-500">
-                      <span className="inline-flex items-center gap-1">
-                        <Star className="size-3.5" />
-                        {formatQuality(record.qualityScore)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={record.status} />
-                    </TableCell>
-                  </TableRow>
-                ))
+                userRecords.map((record) => {
+                  const displayDuration = getDisplayDuration(record);
+
+                  return (
+                    <TableRow
+                      key={record.id}
+                      className="cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
+                      onClick={() => setSelected(record)}
+                    >
+                      <TableCell className="max-w-48 truncate font-medium">
+                        {record.title ?? `Звонок #${record.id}`}
+                      </TableCell>
+                      <TableCell className="text-neutral-500">
+                        {record.callTo ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-sm text-neutral-500">
+                        {formatRecordDate(record)}
+                      </TableCell>
+                      <TableCell className="text-sm tabular-nums text-neutral-500">
+                        {displayDuration != null
+                          ? formatDuration(displayDuration)
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-sm text-neutral-500">
+                        <span className="inline-flex items-center gap-1">
+                          <Star className="size-3.5" />
+                          {formatQuality(record.qualityScore)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={record.status} />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -303,6 +557,34 @@ export default function UserDetailPage() {
         onClose={() => setSelected(null)}
         agentName={displayName}
       />
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить пользователя?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Пользователь будет удалён. Его записи сохранятся, но потеряют
+              владельца. Это действие нельзя отменить.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteUser.isPending}>
+              Отмена
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleteUser.isPending}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {deleteUser.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : null}
+              Удалить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
