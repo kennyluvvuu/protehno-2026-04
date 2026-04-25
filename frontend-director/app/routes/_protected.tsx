@@ -1,0 +1,35 @@
+import { useState } from "react"
+import { Outlet } from "react-router"
+import { LayoutHeader, Sidebar } from "~/components/layout"
+import { QueryClientProvider } from "@tanstack/react-query"
+import { queryClient } from "~/lib/query-client"
+import type { User } from "~/types/auth"
+
+const MOCK_USER: User = { id: 0, name: "Директор", email: "director@example.com" }
+
+export function loader() {
+    return { user: MOCK_USER }
+}
+
+export default function ProtectedLayout() {
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+
+    return (
+        <QueryClientProvider client={queryClient}>
+            <div className="flex min-h-dvh bg-background">
+                <Sidebar user={MOCK_USER} isCollapsed={isSidebarCollapsed} />
+                <div className="flex min-h-dvh flex-1 flex-col overflow-hidden">
+                    <LayoutHeader
+                        isSidebarCollapsed={isSidebarCollapsed}
+                        onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+                    />
+                    <main className="flex-1 overflow-y-auto">
+                        <div className="mx-auto w-full max-w-7xl px-4 py-6">
+                            <Outlet />
+                        </div>
+                    </main>
+                </div>
+            </div>
+        </QueryClientProvider>
+    )
+}

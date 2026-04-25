@@ -1,35 +1,24 @@
 # Backend API Contract
 
-Краткий API-контракт для фронтенда и AI-агентов.
+Краткий контракт backend API для фронтенда и AI-агентов.
 
 ## Rules for AI agents
 
-- Treat this document as the source of truth for frontend integration.
-- Do not edit anything inside `backend/`.
-- Do not change backend contracts from the client side.
-- If an endpoint feels inconsistent, adapt the frontend and report the issue separately.
-- Main integration model:
-  1. `POST /login` validates credentials and sets `httpOnly` cookie `auth`
-  2. protected endpoints use cookie auth, not Bearer token
-  3. frontend must send requests with credentials/cookies enabled
-  4. `POST /records/upload` starts async processing only
-  5. final AI data is fetched via `GET /records/:id`
-
----
+- Use this file as integration source of truth.
+- Do not modify backend behavior from frontend side.
+- Auth mode is cookie-based (`httpOnly` cookie `auth`).
+- Upload is async: final AI data comes from `GET /records/:id`, `GET /records/feed`, or `GET /records/by-mango-entry/:entryId`.
 
 ## Base URL
 
 - local: `http://localhost:3000`
 
----
-
 ## Auth
 
-### Login
-`POST /login`
+### `POST /login`
 
 Request:
-```/dev/null/login-request.json#L1-4
+```json
 {
   "email": "alice@example.com",
   "password": "qwerty123"
@@ -37,7 +26,7 @@ Request:
 ```
 
 Success `200`:
-```/dev/null/login-response.json#L1-5
+```json
 {
   "id": 1,
   "name": "Alice",
@@ -46,182 +35,210 @@ Success `200`:
 ```
 
 Side effect:
-- backend sets `httpOnly` cookie `auth`
+- sets `httpOnly` cookie `auth`
 
-Rules:
-- do not expect `token` in response body
-- do not send `Authorization: Bearer ...`
-- for protected endpoints send requests with cookies included
-
-Example with `fetch`:
-```/dev/null/fetch-auth.js#L1-3
-fetch("http://localhost:3000/records", {
-  credentials: "include"
-})
-```
-
-Example with `axios`:
-```/dev/null/axios-auth.js#L1-3
-axios.get("http://localhost:3000/records", {
-  withCredentials: true
-})
-```
-
-Error semantics:
-- invalid credentials -> message: `Invalid credentials`
-
-### Logout
-`POST /logout`
+### `POST /logout`
 
 Success `200`:
-```/dev/null/logout-response.json#L1-3
+```json
 {
   "message": "Logged out"
 }
 ```
 
 Side effect:
-- backend removes `auth` cookie
-
----
+- clears cookie `auth`
 
 ## Health
 
-### Check service status
-`GET /health`
+### `GET /health`
 
 Success `200`:
-```/dev/null/health-response.json#L1-3
+```json
 {
   "status": "ok"
 }
 ```
 
----
-
 ## Users
 
-### Register user
-`POST /users/register`
+### `POST /users/register`
 
 Request:
-```/dev/null/register-request.json#L1-5
+```json
 {
   "name": "Alice",
   "email": "alice@example.com",
-  "password": "qwerty123"
+  "password": "qwerty123",
+  "mangoUserId": 12345
 }
 ```
+`mangoUserId` is optional.
 
 Success `200`:
-```/dev/null/register-response.json#L1-5
+```json
 {
   "id": 1,
   "name": "Alice",
-  "email": "alice@example.com"
+  "email": "alice@example.com",
+  "mangoUserId": 12345
 }
 ```
 
-Error semantics:
-- `400` / `422` -> validation error
-- occupied email -> message: `Email already in use`
+### `GET /users/me`
 
-### Get current user
-`GET /users/me`
-
-Auth:
-- requires `httpOnly` cookie `auth`
+Auth required.
 
 Success `200`:
-```/dev/null/me-response.json#L1-5
+```json
 {
   "id": 1,
   "name": "Alice",
-  "email": "alice@example.com"
+  "email": "alice@example.com",
+  "mangoUserId": 12345
 }
 ```
 
-### Get users list
-`GET /users`
+### `PATCH /users/me/mango-user-id`
 
-Auth:
-- requires `httpOnly` cookie `auth`
+Auth required.
+
+Request:
+```json
+{
+  "mangoUserId": 12345
+}
+```
+
+Set `"mangoUserId": null` to clear mapping.
 
 Success `200`:
-```/dev/null/users-response.json#L1-8
+```json
+{
+  "id": 1,
+  "name": "Alice",
+  "email": "alice@example.com",
+  "mangoUserId": 12345
+}
+```
+
+### `GET /users`
+
+Auth required.
+
+Success `200`:
+```json
 [
   {
     "id": 1,
     "name": "Alice",
-    "email": "alice@example.com"
+    "email": "alice@example.com",
+    "mangoUserId": 12345
   }
 ]
 ```
 
-Type shape:
-```/dev/null/user-type.ts#L1-5
-type User = {
-  id: number;
-  name: string;
-  email: string;
-};
-```
+### `GET /users/:id`
 
-### Get user by id
-`GET /users/:id`
-
-Auth:
-- requires `httpOnly` cookie `auth`
+Auth required.
 
 Success `200`:
-```/dev/null/user-by-id-response.json#L1-5
+```json
 {
   "id": 1,
   "name": "Alice",
-  "email": "alice@example.com"
+  "email": "alice@example.com",
+  "mangoUserId": 12345
 }
 ```
 
-Error semantics:
-- not found -> message: `User not found`
+### `GET /users/mango/:mangoUserId`
 
----
+Auth required.
+
+Returns platform user mapped to Mango user id.
+
+Errors:
+- `404` not found
 
 ## Records
 
-## Async processing model
+## Record entity
 
-`POST /records/upload` does **not** return final AI results.
+`records` contains both manual and Mango calls.
 
-Expected frontend flow:
-1. upload file
-2. receive record `id`
-3. poll `GET /records/:id`
-4. stop polling on `done` or `failed`
+Core fields:
+- `id: number`
+- `userId: number | null`
+- `source: "manual" | "mango"`
+- `callTo: string | null`
+- `title: string | null`
+- `durationSec: number | null`
+- `fileUri: string | null`
+- `transcription: string | null`
+- `summary: string | null`
+- `status: "uploaded" | "queued" | "processing" | "done" | "failed" | "not_applicable"`
+- `error: string | null`
+- `startedAt: string | null`
+- `finishedAt: string | null`
+- `checkboxes: { tasks, promises, agreements } | null`
+- `tags: string[]`
 
-Status meanings:
-- `queued` -> upload accepted, background processing scheduled
-- `processing` -> AI processing in progress
-- `done` -> AI processing completed
-- `failed` -> AI processing failed
+Mango fields:
+- `ingestionStatus: "ready" | "pending_audio" | "downloading" | "no_audio" | "failed"`
+- `ingestionError: string | null`
+- `mangoEntryId`, `mangoCallId`, `mangoRecordingId`, `mangoCommunicationId`
+- `mangoUserId: number | null`
+- `direction`, `callerNumber`, `calleeNumber`, `lineNumber`, `extension`
+- `callStartedAt`, `callAnsweredAt`, `callEndedAt`
+- `talkDurationSec`, `isMissed`, `hasAudio`
 
-Note:
-- schema also contains `uploaded`, but in the current HTTP flow the upload endpoint returns `queued`
+## Processing model
 
-### Upload audio record
-`POST /records/upload`
+### Manual upload
 
-Auth:
-- requires `httpOnly` cookie `auth`
+1. `POST /records/upload`
+2. Receive `202` with queued status
+3. Poll `GET /records/:id`
+4. Stop on `done` or `failed`
 
-Request format:
+### Mango ingestion
+
+1. Mango sends `summary` webhook -> create/update record metadata.
+2. Mango sends `record/added` webhook -> download audio -> set queued -> run AI.
+3. Missed calls have no audio -> `status = "not_applicable"`, `ingestionStatus = "no_audio"`.
+
+## Status semantics
+
+AI `status`:
+- `uploaded`
+- `queued`
+- `processing`
+- `done`
+- `failed`
+- `not_applicable`
+
+Ingestion `ingestionStatus`:
+- `ready`
+- `pending_audio`
+- `downloading`
+- `no_audio`
+- `failed`
+
+## Endpoints
+
+### `POST /records/upload`
+
+Auth required.
+
+Request:
 - `multipart/form-data`
-- file field name: `file`
-- optional text field: `title`
-- optional text field: `callTo`
+- `file: audio/*` (required)
+- `title: string` (optional)
+- `callTo: string` (optional)
 
 Success `202`:
-```/dev/null/upload-response.json#L1-7
+```json
 {
   "id": 12,
   "userId": 1,
@@ -231,169 +248,97 @@ Success `202`:
 }
 ```
 
-Upload field semantics:
-- `title` is optional
-- if `title` is provided during upload, backend stores it and AI uses it only as context
-- if `title` is not provided, AI generates a short title later during processing
-- `callTo` is optional and should contain the counterparty name for the call
+### `GET /records`
 
-Integration rules:
-- response is only upload acknowledgment
-- do not expect `summary`, `transcription`, `title`, `tags`, `checkboxes` here
-- use returned `id` for `GET /records/:id`
-- if frontend already knows the call title, it may send it in upload request
-- if frontend knows the counterparty name, it may send it as `callTo`
+Auth required.
 
-### Get current user records
-`GET /records`
+Returns records for current user only (`userId = auth user`).
+Mango records with `userId = null` are not returned here.
 
-Auth:
-- requires `httpOnly` cookie `auth`
+Success `200`: `GetRecord[]`
 
-Success `200`:
-```/dev/null/records-response.json#L1-17
-[
-  {
-    "id": 12,
-    "userId": 1,
-    "callTo": "ООО Ромашка",
-    "title": "Первичный звонок по сделке",
-    "durationSec": null,
-    "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
-    "transcription": null,
-    "summary": null,
-    "status": "processing",
-    "error": null,
-    "startedAt": null,
-    "finishedAt": null,
-    "checkboxes": null,
-    "tags": []
-  }
-]
-```
+### `GET /records/feed`
 
-Use cases:
-- records history
-- restore state after page reload
-- show current processing items
+Auth required.
 
-### Get record by id
-`GET /records/:id`
+Returns a unified feed for a single frontend page:
+- current user records (`userId = auth user`) including linked Mango records
+- Mango records not linked to any user yet (`source = "mango"` and `userId = null`)
 
-Auth:
-- requires `httpOnly` cookie `auth`
+Success `200`: `GetRecord[]`
 
-In progress example:
-```/dev/null/record-processing.json#L1-15
-{
-  "id": 12,
-  "userId": 1,
-  "callTo": "ООО Ромашка",
-  "title": "Первичный звонок по сделке",
-  "durationSec": null,
-  "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
-  "transcription": null,
-  "summary": null,
-  "status": "processing",
-  "error": null,
-  "startedAt": "2025-01-10T12:00:00.000Z",
-  "finishedAt": null,
-  "checkboxes": null,
-  "tags": []
-}
-```
+### `GET /records/:id`
 
-Done example:
-```/dev/null/record-done.json#L1-30
-{
-  "id": 12,
-  "userId": 1,
-  "callTo": "ООО Ромашка",
-  "title": "Первичный звонок по сделке",
-  "durationSec": 98,
-  "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
-  "transcription": "Текст расшифровки звонка",
-  "summary": "Краткая выжимка разговора",
-  "status": "done",
-  "error": null,
-  "startedAt": "2025-01-10T12:00:00.000Z",
-  "finishedAt": "2025-01-10T12:01:45.000Z",
-  "checkboxes": {
-    "tasks": [
-      { "label": "Подготовить коммерческое предложение", "checked": false }
-    ],
-    "promises": [
-      { "label": "Отправить материалы на почту", "checked": false }
-    ],
-    "agreements": [
-      { "label": "Созвониться повторно на следующей неделе", "checked": false }
-    ]
-  },
-  "tags": ["сделка", "follow-up"]
-}
-```
+Auth required.
 
-Failed example:
-```/dev/null/record-failed.json#L1-15
-{
-  "id": 12,
-  "userId": 1,
-  "callTo": "ООО Ромашка",
-  "title": "Первичный звонок по сделке",
-  "durationSec": null,
-  "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
-  "transcription": null,
-  "summary": null,
-  "status": "failed",
-  "error": "AI processing failed",
-  "startedAt": "2025-01-10T12:00:00.000Z",
-  "finishedAt": "2025-01-10T12:00:05.000Z",
-  "checkboxes": null,
-  "tags": []
-}
-```
+Returns single user-owned record.
 
-Error semantics:
-- invalid id -> `400`, message: `Invalid record id`
-- not found -> `404`, message: `Record not found`
-- чужая запись -> `403`, message: `Forbidden`
+Errors:
+- `400` invalid id
+- `404` not found
+- `403` forbidden (record belongs to another user or is unowned Mango record)
 
-Frontend interpretation:
-- `queued` / `processing` -> show loading or pending state
-- `done` -> render `title`, `callTo`, `transcription`, `summary`, `tags`, `checkboxes`
-- `failed` -> render error from `error`
-- `title` may come either from upload input or from AI generation if it was omitted during upload
+### `GET /records/by-mango-entry/:entryId`
 
----
+Auth required.
 
-## Recommended frontend behavior
+Returns record by Mango `entry_id`.
+Use this endpoint for Mango records.
 
-- do not store JWT from response body, because login response does not return one
-- centralize credentials-enabled requests in API client
-- use `credentials: "include"` or `withCredentials: true`
-- model upload and final result as two separate states
-- poll `GET /records/:id` every 2-5 seconds after upload
-- stop polling when status becomes `done` or `failed`
+Errors:
+- `404` not found
 
----
+## Mango webhooks
 
-## Short machine-readable summary
+## `POST /integrations/mango/events/summary`
 
-- auth mode: `httpOnly cookie`
-- auth cookie name: `auth`
-- login response contains user object only
-- login side effect: sets auth cookie
-- logout side effect: removes auth cookie
-- protected endpoints:
-  - `GET /users`
-  - `GET /users/:id`
-  - `GET /users/me`
-  - `POST /records/upload`
-  - `GET /records`
-  - `GET /records/:id`
-- upload response status: `202`
-- upload request supports optional fields: `title`, `callTo`
-- upload response is not final AI result
-- final AI result source: `GET /records/:id`
-- record object may contain `title`
-- if upload title is missing, AI may generate `title` during processing
+Content type from Mango: `application/x-www-form-urlencoded`
+Body fields:
+- `vpbx_api_key: string`
+- `sign: string`
+- `json: string`
+
+Behavior:
+- validates signature
+- parses/validates payload
+- returns quickly (`200 { "ok": true }`)
+- processes event async
+
+Error responses:
+- `403` invalid signature
+- `400` malformed/invalid payload
+
+## `POST /integrations/mango/events/record/added`
+
+Format and behavior are the same:
+- signature validation
+- payload validation
+- immediate `200 { "ok": true }`
+- async download + ingestion + AI trigger
+
+## Frontend integration rules
+
+- Always send cookies for protected endpoints.
+- Treat upload acknowledgment and AI result as different states.
+- Poll every 2-5 seconds after upload.
+- Stop polling at `done` or `failed`.
+- Handle `not_applicable` for missed calls with no audio.
+- Use `/records/feed` as primary endpoint for a single records page.
+- Use `PATCH /users/me/mango-user-id` to link Mango user and backfill ownership for existing unowned Mango records.
+- Use `/records/by-mango-entry/:entryId` for Mango call cards/details.
+
+## Environment variables
+
+Common:
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `GROQ_API_KEY`
+- `GROQ_BASE_URL`
+- `GROQ_TRANSCRIPTION_MODEL`
+- `MISTRAL_API_KEY`
+- `MISTRAL_SUMMARY_MODEL`
+
+Mango:
+- `MANGO_VPBX_API_KEY`
+- `MANGO_VPBX_API_SALT`
+- `MANGO_BASE_URL` (default `https://app.mango-office.ru`)

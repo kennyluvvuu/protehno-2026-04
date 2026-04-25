@@ -9,6 +9,9 @@ import RecordService from "./plugins/records/service";
 import LocalStorage from "./storage/local";
 import { cors } from "@elysiajs/cors";
 import AIService from "./plugins/records/ai-service";
+import { MangoClient } from "./plugins/mango/client";
+import { MangoIngestionService } from "./plugins/mango/service";
+import { mangoWebhookPlugin } from "./plugins/mango/webhook";
 
 async function bootstrapServer() {
     const db = getDbConnection(Bun.env.DATABASE_URL!);
@@ -16,6 +19,21 @@ async function bootstrapServer() {
     const recordsService = new RecordService(db);
     const localStorage = new LocalStorage("./uploads/");
     const aiService = new AIService();
+
+    const mangoClient = new MangoClient({
+        apiKey: Bun.env.MANGO_VPBX_API_KEY ?? "",
+        apiSalt: Bun.env.MANGO_VPBX_API_SALT ?? "",
+        baseUrl: Bun.env.MANGO_BASE_URL,
+    });
+
+    const mangoIngestionService = new MangoIngestionService(
+        recordsService,
+        userService,
+        localStorage,
+        aiService,
+        mangoClient,
+    );
+
     const app = new Elysia()
         .use(cors())
         .use(errorHandler)
@@ -23,9 +41,11 @@ async function bootstrapServer() {
             return { status: "ok" };
         })
         .use(authPlugin(userService))
-        .use(userPlugin(userService))
+        .use(userPlugin(userService, recordsService))
         .use(recordsPlugin(recordsService, localStorage, aiService))
+        .use(mangoWebhookPlugin(mangoClient, mangoIngestionService))
         .listen(3000);
+
     console.log(
         `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`,
     );

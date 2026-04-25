@@ -19,6 +19,7 @@ class UserService {
                 .values({
                     email: user.email,
                     name: user.name,
+                    mangoUserId: user.mangoUserId ?? null,
                     password_hash: passwordHash,
                 })
                 .returning();
@@ -75,6 +76,38 @@ class UserService {
     async getAllUsers(): Promise<GetUser[]> {
         const users = await this.db.select().from(userTable);
         return users.map(UserService.withoutPasswordHash);
+    }
+
+    async getUserByMangoUserId(
+        mangoUserId: number,
+    ): Promise<GetUser | undefined> {
+        const [user] = await this.db
+            .select()
+            .from(userTable)
+            .where(eq(userTable.mangoUserId, mangoUserId));
+
+        if (!user) {
+            return undefined;
+        }
+
+        return UserService.withoutPasswordHash(user);
+    }
+
+    async setMangoUserId(
+        userId: number,
+        mangoUserId: number | null,
+    ): Promise<GetUser> {
+        const [updated] = await this.db
+            .update(userTable)
+            .set({ mangoUserId })
+            .where(eq(userTable.id, userId))
+            .returning();
+
+        if (!updated) {
+            throw new Error("User not found");
+        }
+
+        return UserService.withoutPasswordHash(updated);
     }
 }
 
