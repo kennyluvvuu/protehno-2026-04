@@ -1,11 +1,11 @@
-import { useQuery } from "@tanstack/react-query"
-import { recordsApi } from "~/axios/records"
+import { useQuery } from "@tanstack/react-query";
+import { recordsApi } from "~/axios/records";
 
-export const RECORDS_KEY = ["records", "feed"]
+export const RECORDS_KEY = ["records", "admin-feed"];
 
 export function useRecords() {
-    return useQuery({
-        queryKey: RECORDS_KEY,
-        queryFn: () => recordsApi.getFeed(),
-    })
+  return useQuery({
+    queryKey: RECORDS_KEY,
+    queryFn: () => recordsApi.getAdminFeed(),
+  });
 }

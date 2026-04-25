@@ -50,13 +50,17 @@ export const statsPlugin = (
                     return forbidden;
                 }
 
+                const url = new URL(context.request.url);
+                const period = url.searchParams.get("period") ?? undefined;
+
                 statsLog("overview", {
                     method: context.request.method,
-                    path: new URL(context.request.url).pathname,
+                    path: url.pathname,
                     userId: context.userId,
+                    period,
                 });
 
-                return await statsService.getOverview();
+                return await statsService.getOverview(period);
             },
         )
         .get(
@@ -68,13 +72,17 @@ export const statsPlugin = (
                     return forbidden;
                 }
 
+                const url = new URL(context.request.url);
+                const period = url.searchParams.get("period") ?? undefined;
+
                 statsLog("weekly", {
                     method: context.request.method,
-                    path: new URL(context.request.url).pathname,
+                    path: url.pathname,
                     userId: context.userId,
+                    period,
                 });
 
-                return await statsService.getWeekly();
+                return await statsService.getWeekly(period);
             },
         )
         .get(
@@ -86,12 +94,16 @@ export const statsPlugin = (
                     return forbidden;
                 }
 
+                const url = new URL(context.request.url);
+                const period = url.searchParams.get("period") ?? undefined;
+
                 statsLog("by-agent", {
                     method: context.request.method,
-                    path: new URL(context.request.url).pathname,
+                    path: url.pathname,
                     userId: context.userId,
+                    period,
                 });
 
-                return await statsService.getByAgent();
+                return await statsService.getByAgent(period);
             },
         );

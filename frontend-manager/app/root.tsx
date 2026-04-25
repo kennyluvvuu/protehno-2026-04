@@ -40,7 +40,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="ru">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -64,30 +64,22 @@ export default function App() {
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
-  let message = "Oops!"
-  let details = "An unexpected error occurred."
-  let stack: string | undefined
+  let message = "Ошибка"
+  let details = "Что-то пошло не так."
 
   if (isRouteErrorResponse(error)) {
-    message = error.status === 404 ? "404" : "Error"
-    details =
-      error.status === 404
-        ? "The requested page could not be found."
-        : error.statusText || details
-  } else if (import.meta.env.DEV && error && error instanceof Error) {
+    message = error.status === 404 ? "404" : "Ошибка"
+    details = error.status === 404 ? "Страница не найдена." : error.statusText || details
+  } else if (import.meta.env.DEV && error instanceof Error) {
     details = error.message
-    stack = error.stack
   }
 
   return (
-    <main className="pt-16 p-4 container mx-auto">
-      <h1>{message}</h1>
-      <p>{details}</p>
-      {stack && (
-        <pre className="w-full p-4 overflow-x-auto">
-          <code>{stack}</code>
-        </pre>
-      )}
+    <main className="flex min-h-dvh items-center justify-center p-4">
+      <div className="text-center">
+        <h1 className="text-2xl font-semibold">{message}</h1>
+        <p className="mt-2 text-sm text-neutral-500">{details}</p>
+      </div>
     </main>
   )
 }
