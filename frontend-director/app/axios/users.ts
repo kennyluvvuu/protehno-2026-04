@@ -2,6 +2,14 @@ import { api } from "~/lib/axios-client";
 import { assertRequestCooldown } from "~/lib/request-guard";
 import type { User } from "~/types/auth";
 
+export interface MangoTelephonyNumber {
+  number: string;
+  protocol: string | null;
+  order: number | null;
+  wait_sec: number | null;
+  status: string | null;
+}
+
 export interface CreateUserPayload {
   name: string;
   email: string;
@@ -9,6 +17,25 @@ export interface CreateUserPayload {
   role: "manager";
   fio?: string | null;
   mangoUserId?: number | null;
+}
+
+export interface CreateUserFromMangoPayload {
+  name: string;
+  fio?: string | null;
+  email: string;
+  password: string;
+  role: "manager";
+  mangoUserId: number;
+  mangoLogin?: string | null;
+  mangoExtension?: string | null;
+  mangoPosition?: string | null;
+  mangoDepartment?: string | null;
+  mangoMobile?: string | null;
+  mangoOutgoingLine?: string | null;
+  mangoAccessRoleId?: number | null;
+  mangoGroups?: number[] | null;
+  mangoSips?: string[] | null;
+  mangoTelephonyNumbers?: MangoTelephonyNumber[] | null;
 }
 
 export interface UpdateUserPayload {
@@ -39,6 +66,17 @@ export const usersApi = {
   update: async (id: number, payload: UpdateUserPayload): Promise<User> => {
     assertRequestCooldown(`users:update:${id}`, 800);
     const { data } = await api.patch<User>(`/users/${id}`, payload);
+    return data;
+  },
+
+  createFromMango: async (
+    payload: CreateUserFromMangoPayload,
+  ): Promise<User> => {
+    assertRequestCooldown("users:create-from-mango", 1000);
+    const { data } = await api.post<User>(
+      "/users/mango/create-local-user",
+      payload,
+    );
     return data;
   },
 

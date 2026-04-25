@@ -1,4 +1,11 @@
-import { BarChart2, List, LogOut, Settings, Users } from "lucide-react";
+import {
+  BarChart2,
+  List,
+  LogOut,
+  Settings,
+  Users,
+  PhoneCall,
+} from "lucide-react";
 import { NavLink, useNavigate, useRevalidator } from "react-router";
 import { toast } from "sonner";
 import { authApi } from "~/axios/auth";
@@ -16,6 +23,7 @@ const nav = [
   { to: "/", label: "Дэшборд", icon: BarChart2, end: true },
   { to: "/calls", label: "Список звонков", icon: List, end: false },
   { to: "/users", label: "Пользователи", icon: Users, end: false },
+  { to: "/mango", label: "Mango Office", icon: PhoneCall, end: false },
   { to: "/settings", label: "Настройки", icon: Settings, end: false },
 ];
 
@@ -98,17 +106,25 @@ export function Sidebar({
             isCollapsed ? "justify-center gap-1" : "gap-2",
           )}
         >
-          <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs font-semibold text-white dark:bg-neutral-700">
+          <button
+            type="button"
+            onClick={() => navigate("/settings")}
+            className="flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs font-semibold text-white transition-opacity hover:opacity-80 dark:bg-neutral-700"
+          >
             {displayName.charAt(0).toUpperCase()}
-          </div>
+          </button>
 
           {!isCollapsed && (
-            <div className="min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={() => navigate("/settings")}
+              className="min-w-0 flex-1 text-left transition-opacity hover:opacity-70"
+            >
               <p className="truncate text-xs font-medium">{displayName}</p>
               <p className="truncate text-[10px] text-neutral-400">
                 {roleLabel}
               </p>
-            </div>
+            </button>
           )}
 
           <button
