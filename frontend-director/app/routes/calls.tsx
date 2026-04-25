@@ -6,7 +6,6 @@ import {
   CalendarDays,
   Check,
   Filter,
-  Loader2,
   Mic,
   Search,
   X,
@@ -14,6 +13,7 @@ import {
 import { CallDetailSheet } from "~/components/calls/call-detail-sheet";
 import { PageHeader } from "~/components/layout";
 import { Badge } from "~/components/ui/badge";
+import { Skeleton } from "~/components/ui/skeleton";
 import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,
@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import { Input } from "~/components/ui/input";
+import { Pagination } from "~/components/ui/pagination";
 import {
   Table,
   TableBody,
@@ -32,6 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
+import { usePagination } from "~/hooks/usePagination";
 import { useRecords } from "~/hooks/useRecords";
 import { useUsers } from "~/hooks/useUsers";
 import { cn } from "~/lib/utils";
@@ -46,7 +48,6 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "processing", label: "В обработке" },
   { value: "done", label: "Выполнено" },
   { value: "failed", label: "Ошибка" },
-  { value: "not_applicable", label: "Нет аудио" },
 ];
 
 function formatDuration(sec: number): string {
@@ -186,7 +187,7 @@ function StatusBadge({ status }: { status: RecordStatus }) {
 }
 
 export default function Calls() {
-  const { data: records = [], isLoading } = useRecords();
+  const { data: records = [], isPending } = useRecords();
   const { data: users = [] } = useUsers();
 
   const [search, setSearch] = useState("");
@@ -252,6 +253,8 @@ export default function Calls() {
     dateTo,
     userMap,
   ]);
+
+  const { page, totalPages, pageItems, setPage } = usePagination(filtered);
 
   const isDateActive = dateFrom !== "" || dateTo !== "";
 
@@ -432,12 +435,17 @@ export default function Calls() {
           </TableHeader>
 
           <TableBody>
-            {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={6} className="py-16 text-center">
-                  <Loader2 className="mx-auto size-6 animate-spin text-neutral-400" />
-                </TableCell>
-              </TableRow>
+            {isPending ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+                </TableRow>
+              ))
             ) : filtered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-16 text-center">
@@ -455,7 +463,7 @@ export default function Calls() {
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((record) => {
+              pageItems.map((record) => {
                 const recordDate = getRecordDate(record);
                 const agentName = getDisplayAgentName(record, userMap);
                 const displayDuration = getDisplayDuration(record);
@@ -496,9 +504,12 @@ export default function Calls() {
         </Table>
       </div>
 
-      <p className="mt-2 text-xs text-neutral-400">
-        {filtered.length} из {records.length} записей
-      </p>
+      <div className="mt-3 flex items-center justify-between">
+        <p className="text-xs text-neutral-400">
+          {filtered.length} из {records.length} записей
+        </p>
+        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+      </div>
 
       <CallDetailSheet
         record={selected}

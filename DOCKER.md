@@ -1,37 +1,63 @@
-# Docker: запуск всего стека
+# Docker: запуск стека через Caddy
 
-В проекте подготовлен единый docker-стек для:
+В проекте используется единый docker-стек, где внешний вход в систему организован через `Caddy`, а внутренние сервисы (`backend`, `frontend-manager`, `frontend-director`) не публикуют свои порты наружу.
 
+## Что входит в стек
+
+- `caddy`
 - `frontend-manager`
+- `frontend-director`
 - `backend`
 - `postgresql`
 
-Файл переменных окружения вынесен в корень проекта рядом с `docker-compose.yaml`.
+## Архитектура
 
-## Что находится в корне
+Снаружи доступен только `Caddy`.
 
-- `docker-compose.yaml`
-- `.env.example`
+Он проксирует запросы так:
 
-Рекомендуемая структура для запуска:
+- `http://manager.localhost` → `frontend-manager`
+- `http://director.localhost` → `frontend-director`
+- `http://api.localhost/*` → `backend`
+- `http://localhost` → landing page
 
-```/dev/null/tree.txt#L1-6
+Внутренние сервисы работают только внутри docker-сети:
+
+- `backend:3000`
+- `frontend-manager:3000`
+- `frontend-director:3000`
+- `postgres:5432`
+
+Это даёт более чистую схему:
+- один публичный вход
+- меньше конфликтов портов
+- единая точка маршрутизации
+- проще работать с SSR-приложениями и API
+
+---
+
+## Что находится в корне проекта
+
+```/dev/null/tree.txt#L1-7
 jwtusers/
   .env
   .env.example
   docker-compose.yaml
+  Caddyfile
   DOCKER.md
 ```
 
+---
+
 ## 1. Подготовка `.env`
 
-Скопируйте пример:
+Создай `.env` из примера:
 
 ```/dev/null/cmd.sh#L1-1
 cp .env.example .env
 ```
 
-После этого откройте `.env` и заполните значения.
+После этого заполни нужные значения.
 
 Минимально обязательные переменные:
 
@@ -42,62 +68,91 @@ cp .env.example .env
 - `GROQ_API_KEY`
 - `MISTRAL_API_KEY`
 
-Остальные можно оставить как в примере, если вам подходят значения по умолчанию.
+---
 
-## 2. Что означает каждая env-переменная
+## 2. Основные env-переменные
 
 ### Общие
 
-- `COMPOSE_PROJECT_NAME` — префикс имен контейнеров, сети и volume в Docker Compose
-- `NODE_ENV` — режим приложения, для docker-окружения обычно `production`
+- `COMPOSE_PROJECT_NAME` — префикс имён контейнеров, сети и volume
+- `CADDY_HTTP_PORT` — внешний HTTP-порт Caddy, по умолчанию `80`
 
 ### PostgreSQL
 
-- `POSTGRES_DB` — имя базы данных
+- `POSTGRES_DB` — имя базы
 - `POSTGRES_USER` — пользователь PostgreSQL
 - `POSTGRES_PASSWORD` — пароль PostgreSQL
-- `POSTGRES_PORT` — порт PostgreSQL на вашей машине
+- `POSTGRES_PORT` — внешний порт PostgreSQL на машине, если он опубликован
 
 ### Backend
 
-- `BACKEND_PORT` — порт backend на вашей машине
-- `JWT_SECRET` — секрет для подписи auth cookie / JWT, обязательно задайте длинное случайное значение
-- `DATABASE_URL` — строка подключения к БД; в compose обычно собирается через внутренний hostname `postgres` и используется backend-контейнером для `drizzle-kit push` при старте
-- `GROQ_API_KEY` — ключ для транскрибации
-- `GROQ_BASE_URL` — базовый URL Groq/OpenAI-compatible API
+- `JWT_SECRET` — секрет для auth cookie / JWT
+- `GROQ_API_KEY` — ключ Groq
+- `GROQ_BASE_URL` — base URL Groq API
 - `GROQ_TRANSCRIPTION_MODEL` — модель транскрибации
-- `MISTRAL_API_KEY` — ключ Mistral для summary/LLM
-- `MISTRAL_SUMMARY_MODEL` — модель Mistral для саммаризации
-- `MANGO_VPBX_API_KEY` — ключ Mango Office API
-- `MANGO_VPBX_API_SALT` — salt Mango Office API
-- `MANGO_BASE_URL` — базовый URL Mango Office API
-- `DB_WAIT_MAX_ATTEMPTS` — сколько раз backend будет ждать доступность БД перед завершением
+- `MISTRAL_API_KEY` — ключ Mistral
+- `MISTRAL_SUMMARY_MODEL` — модель Mistral
+- `MANGO_VPBX_API_KEY` — ключ Mango Office
+- `MANGO_VPBX_API_SALT` — salt Mango Office
+- `MANGO_BASE_URL` — base URL Mango Office
+- `DB_WAIT_MAX_ATTEMPTS` — сколько раз backend ждёт БД при старте
 
 ### Frontend
 
-- `FRONTEND_MANAGER_PORT` — порт frontend на вашей машине
-- `VITE_BASE_URL` — URL backend, который использует frontend
-- `VITE_TIMEOUT` — timeout запросов frontend к backend в миллисекундах
+- `FRONTEND_MANAGER_VITE_BASE_URL` — URL backend для manager frontend
+- `FRONTEND_DIRECTOR_VITE_BASE_URL` — URL backend для director frontend
+- `VITE_TIMEOUT` — timeout frontend-запросов
+
+---
 
 ## 3. Важный момент про `VITE_BASE_URL`
 
-Если frontend работает **внутри docker-compose**, ему обычно нужен внутренний адрес backend:
+Так как `frontend-manager` и `frontend-director` работают как SSR-приложения внутри docker-сети, для них backend должен быть указан по внутреннему имени сервиса:
 
-```/dev/null/env.txt#L1-1
-VITE_BASE_URL=http://backend:3000
+```/dev/null/env.txt#L1-3
+FRONTEND_MANAGER_VITE_BASE_URL=http://backend:3000
+FRONTEND_DIRECTOR_VITE_BASE_URL=http://backend:3000
+VITE_TIMEOUT=10000
 ```
 
-Если вы захотите запускать frontend вне Docker, тогда обычно нужен адрес вида:
+Для текущего Docker-стека это правильная конфигурация.
 
-```/dev/null/env-local.txt#L1-1
-VITE_BASE_URL=http://localhost:3000
+Не используй `http://localhost:3000` внутри этих переменных для docker-запуска, потому что внутри контейнера `localhost` указывает на сам контейнер, а не на сервис `backend`.
+
+---
+
+## 4. Пример `.env` для локального Docker-запуска
+
+```/dev/null/example.env#L1-18
+COMPOSE_PROJECT_NAME=connectio
+
+POSTGRES_DB=jwtusers
+POSTGRES_USER=jwtusers
+POSTGRES_PASSWORD=secret
+POSTGRES_PORT=5432
+
+CADDY_HTTP_PORT=80
+
+JWT_SECRET=change-me-to-a-long-random-secret
+
+FRONTEND_MANAGER_VITE_BASE_URL=http://backend:3000
+FRONTEND_DIRECTOR_VITE_BASE_URL=http://backend:3000
+VITE_TIMEOUT=10000
+
+GROQ_API_KEY=your-groq-key
+MISTRAL_API_KEY=your-mistral-key
+
+MANGO_VPBX_API_KEY=
+MANGO_VPBX_API_SALT=
+MANGO_BASE_URL=https://app.mango-office.ru
+DB_WAIT_MAX_ATTEMPTS=30
 ```
 
-Для docker-стека используйте именно адрес сервиса внутри compose-сети.
+---
 
-## 4. Запуск
+## 5. Запуск
 
-Из корня проекта выполните:
+Из корня проекта:
 
 ```/dev/null/docker-up.sh#L1-1
 docker compose up --build
@@ -109,124 +164,137 @@ docker compose up --build
 docker compose up --build -d
 ```
 
-## 5. Остановка
+---
+
+## 6. Что будет доступно после запуска
+
+По умолчанию открывай:
+
+- manager: `http://manager.localhost`
+- director: `http://director.localhost`
+- API health: `http://api.localhost/health`
+- landing page: `http://localhost`
+
+Если в `.env` изменён `CADDY_HTTP_PORT`, тогда используй соответствующий порт, например:
+
+```/dev/null/url-example.txt#L1-4
+http://manager.localhost:8088
+http://director.localhost:8088
+http://api.localhost:8088/health
+http://localhost:8088
+```
+
+---
+
+## 7. Остановка
 
 ```/dev/null/docker-down.sh#L1-1
 docker compose down
 ```
 
-Если нужно удалить и volume с PostgreSQL-данными:
+Если нужно удалить volume с данными PostgreSQL:
 
 ```/dev/null/docker-down-volumes.sh#L1-1
 docker compose down -v
 ```
 
-## 6. Что будет доступно после запуска
+---
 
-По умолчанию:
-
-- frontend-manager: `http://localhost:8080`
-- backend: `http://localhost:3000`
-- postgresql: `localhost:5432`
-
-Если вы изменили порты в `.env`, используйте свои значения.
-
-## 7. Первый запуск backend
+## 8. Первый запуск backend
 
 При старте backend:
 
-1. ждет готовности PostgreSQL
-2. выполняет `drizzle-kit push` и синхронизирует схему базы по текущим Drizzle-моделям
+1. ждёт готовности PostgreSQL
+2. выполняет `drizzle-kit push`
 3. запускает приложение
-4. выполняет встроенный seed директора, если таблица `users` пустая
+4. сидирует дефолтного директора, если таблица `users` пустая
 
-Дефолтный seed-пользователь директора:
+Дефолтный директор:
 
 - email: `director@example.com`
 - password: `director123`
 
-После первого входа лучше сразу сменить эти данные в приложении или в логике seed, если это окружение не для локальной разработки.
+Для локальной разработки это удобно, но для реального окружения лучше заменить эти данные.
 
-## 8. Проверка состояния
+---
 
-Проверить контейнеры:
+## 9. Проверка состояния
+
+Все контейнеры:
 
 ```/dev/null/docker-ps.sh#L1-1
 docker compose ps
 ```
 
-Посмотреть логи всего стека:
+Все логи:
 
 ```/dev/null/docker-logs.sh#L1-1
 docker compose logs -f
 ```
 
-Логи только backend:
+Логи Caddy:
+
+```/dev/null/docker-logs-caddy.sh#L1-1
+docker compose logs -f caddy
+```
+
+Логи backend:
 
 ```/dev/null/docker-logs-backend.sh#L1-1
 docker compose logs -f backend
 ```
 
-Логи только frontend:
+Логи manager frontend:
 
-```/dev/null/docker-logs-frontend.sh#L1-1
+```/dev/null/docker-logs-manager.sh#L1-1
 docker compose logs -f frontend-manager
 ```
 
-Логи только PostgreSQL:
+Логи director frontend:
+
+```/dev/null/docker-logs-director.sh#L1-1
+docker compose logs -f frontend-director
+```
+
+Логи PostgreSQL:
 
 ```/dev/null/docker-logs-postgres.sh#L1-1
 docker compose logs -f postgres
 ```
 
-## 9. Полезные замечания
+---
 
-### Пересборка после изменений в коде
+## 10. Пересборка после изменений
 
 ```/dev/null/docker-rebuild.sh#L1-1
 docker compose up --build -d
 ```
 
-### Полная очистка образов и контейнеров этого стека
+Полная пересборка без кеша:
+
+```/dev/null/docker-rebuild-nocache.sh#L1-1
+docker compose build --no-cache
+```
+
+---
+
+## 11. Полная очистка
 
 ```/dev/null/docker-clean.sh#L1-2
 docker compose down -v
 docker compose rm -f
 ```
 
-### Если порт уже занят
+При необходимости можно дополнительно удалить локальные образы вручную.
 
-Поменяйте в `.env`:
+---
 
-- `FRONTEND_MANAGER_PORT`
-- `BACKEND_PORT`
-- `POSTGRES_PORT`
+## 12. Проверка health API
 
-## 10. Пример типового сценария
-
-1. Скопировать `.env.example` в `.env`
-2. Заполнить секреты и API keys
-3. Запустить:
-
-```/dev/null/docker-run-flow.sh#L1-1
-docker compose up --build -d
-```
-
-4. Проверить:
-
-```/dev/null/docker-run-check.sh#L1-2
-docker compose ps
-docker compose logs -f backend
-```
-
-5. Открыть frontend в браузере
-6. Войти под директором
-7. Проверить, что backend отвечает по `/health`
-
-Пример проверки health:
+Через Caddy:
 
 ```/dev/null/health-check.sh#L1-1
-curl http://localhost:3000/health
+curl http://api.localhost/health
 ```
 
 Ожидаемый ответ:
@@ -237,22 +305,84 @@ curl http://localhost:3000/health
 }
 ```
 
-## 11. Если что-то не стартует
+---
 
-Проверьте по порядку:
+## 13. Полезные замечания
 
-1. существует ли файл `.env`
-2. заполнены ли `JWT_SECRET`, `GROQ_API_KEY`, `MISTRAL_API_KEY`
-3. не заняты ли порты `8080`, `3000`, `5432`
-4. поднялся ли контейнер `postgres`
-5. корректен ли `VITE_BASE_URL`
-6. смотрите логи backend и frontend
+### Почему Caddy-first схема лучше
 
-## 12. Быстрый старт
+- наружу торчит только один HTTP-порт
+- проще открывать приложение
+- нет необходимости помнить отдельные порты frontend'ов
+- удобнее масштабировать routing
+- чище работать с SSR frontend'ами
 
-```/dev/null/quick-start.sh#L1-4
-cp .env.example .env
-docker compose up --build -d
-docker compose ps
-docker compose logs -f backend
+### Если порт `80` уже занят
+
+Поставь другой внешний порт для Caddy:
+
+```/dev/null/caddy-port.txt#L1-1
+CADDY_HTTP_PORT=8088
 ```
+
+Тогда приложение будет доступно по:
+
+```/dev/null/caddy-port-urls.txt#L1-4
+http://manager.localhost:8088
+http://director.localhost:8088
+http://api.localhost:8088/health
+http://localhost:8088
+```
+
+### Если нужно обращаться к backend напрямую
+
+В Caddy-first схеме лучше использовать маршрут `/api/*` через Caddy, а не публиковать backend напрямую наружу.
+
+---
+
+## 14. Типовой сценарий запуска
+
+1. Скопировать `.env.example` в `.env`
+2. Заполнить секреты и ключи
+3. Убедиться, что:
+   - `FRONTEND_MANAGER_VITE_BASE_URL=http://backend:3000`
+   - `FRONTEND_DIRECTOR_VITE_BASE_URL=http://backend:3000`
+4. Запустить стек:
+
+```/dev/null/run-flow.sh#L1-1
+docker compose up --build -d
+```
+
+5. Проверить:
+
+```/dev/null/run-check.sh#L1-2
+docker compose ps
+docker compose logs -f caddy
+```
+
+6. Открыть:
+   - `http://manager.localhost`
+   - `http://director.localhost`
+
+---
+
+## 15. Если что-то не стартует
+
+Проверь по порядку:
+
+1. `docker compose ps`
+2. `docker compose logs -f caddy backend frontend-manager frontend-director`
+3. доступность API:
+   - `http://api.localhost/health`
+4. корректность `.env`
+5. пересборку без кеша:
+
+```/dev/null/troubleshoot.sh#L1-2
+docker compose build --no-cache
+docker compose up -d
+```
+
+Если manager открывается, а director нет, это уже означает, что:
+- сеть Docker в целом работает
+- Caddy маршрутизация в целом работает
+- проблему нужно искать в конкретном `frontend-director` или его SSR/API-вызовах

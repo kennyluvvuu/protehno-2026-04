@@ -1,3 +1,4 @@
+import Fuse from "fuse.js";
 import { FileAudio, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { PageHeader } from "~/components/layout";
@@ -175,21 +176,31 @@ export default function SearchPage() {
     [users],
   );
 
+  const searchRecords = useMemo<SearchResultRecord[]>(
+    () => records.map((r) => ({ ...r, agentName: getAgentName(r, userMap) })),
+    [records, userMap],
+  );
+
+  const fuse = useMemo(
+    () => new Fuse(searchRecords, {
+      keys: [
+        { name: field, weight: 1 },
+      ],
+      threshold: 0.4,
+      includeScore: true,
+      minMatchCharLength: 2,
+      ignoreLocation: true,
+    }),
+    [searchRecords, field],
+  );
+
   const results = useMemo<SearchResultRecord[]>(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
+    const q = query.trim();
+    if (q.length < 2) return [];
+    return fuse.search(q).map(({ item }) => item);
+  }, [fuse, query]);
 
-    return records
-      .map((record) => ({
-        ...record,
-        agentName: getAgentName(record, userMap),
-      }))
-      .filter((record) =>
-        getSearchValue(record, field).toLowerCase().includes(q),
-      );
-  }, [field, query, records, userMap]);
-
-  const hasQuery = query.trim().length > 0;
+  const hasQuery = query.trim().length >= 2;
 
   return (
     <div>
@@ -246,22 +257,24 @@ export default function SearchPage() {
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          <p className="mb-1 text-xs text-neutral-400">
+        <div>
+          <p className="mb-3 text-xs text-neutral-400">
             Найдено результатов:{" "}
             <strong className="text-neutral-700 dark:text-neutral-300">
               {results.length}
             </strong>
           </p>
 
-          {results.map((record) => (
-            <ResultCard
-              key={record.id}
-              record={record}
-              query={query}
-              field={field}
-            />
-          ))}
+          <div className="flex max-h-[calc(100vh-280px)] flex-col gap-3 overflow-y-auto pr-1">
+            {results.map((record) => (
+              <ResultCard
+                key={record.id}
+                record={record}
+                query={query}
+                field={field}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>

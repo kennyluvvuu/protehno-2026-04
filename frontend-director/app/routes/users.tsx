@@ -13,6 +13,7 @@ import { useForm } from "react-hook-form";
 import { useNavigate, useOutletContext } from "react-router";
 import { PageHeader } from "~/components/layout";
 import { Badge } from "~/components/ui/badge";
+import { Skeleton } from "~/components/ui/skeleton";
 import { Button } from "~/components/ui/button";
 import {
   Dialog,
@@ -22,6 +23,7 @@ import {
 } from "~/components/ui/dialog";
 import { Field } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
+import { Pagination } from "~/components/ui/pagination";
 import {
   Table,
   TableBody,
@@ -30,6 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
+import { usePagination } from "~/hooks/usePagination";
 import { useCreateUser, useUsers } from "~/hooks/useUsers";
 import { createUserSchema, type CreateUserSchema } from "~/schemas/user";
 import { cn } from "~/lib/utils";
@@ -216,7 +219,7 @@ function AddUserDialog({
 export default function UsersPage() {
   const { user: currentUser } = useOutletContext<{ user: User }>();
   const navigate = useNavigate();
-  const { data: allUsers = [], isLoading } = useUsers();
+  const { data: allUsers = [], isPending } = useUsers();
   const users = allUsers.filter((user) => user.id !== currentUser.id);
 
   const [search, setSearch] = useState("");
@@ -259,6 +262,8 @@ export default function UsersPage() {
 
     return list;
   }, [users, search, sort]);
+
+  const { page, totalPages, pageItems, setPage } = usePagination(filtered);
 
   const toggleSort = (field: SortField) => {
     setSort((prev) =>
@@ -328,12 +333,20 @@ export default function UsersPage() {
           </TableHeader>
 
           <TableBody>
-            {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={4} className="py-16 text-center">
-                  <Loader2 className="mx-auto size-6 animate-spin text-neutral-400" />
-                </TableCell>
-              </TableRow>
+            {isPending ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="size-8 rounded-full shrink-0" />
+                      <Skeleton className="h-4 w-32" />
+                    </div>
+                  </TableCell>
+                  <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+                </TableRow>
+              ))
             ) : filtered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="py-16 text-center">
@@ -357,7 +370,7 @@ export default function UsersPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((user) => {
+              pageItems.map((user) => {
                 const displayName = getDisplayName(user);
 
                 return (
@@ -405,9 +418,12 @@ export default function UsersPage() {
         </Table>
       </div>
 
-      <p className="mt-2 text-xs text-neutral-400">
-        {filtered.length} из {users.length} пользователей
-      </p>
+      <div className="mt-3 flex items-center justify-between">
+        <p className="text-xs text-neutral-400">
+          {filtered.length} из {users.length} пользователей
+        </p>
+        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+      </div>
 
       <AddUserDialog open={addOpen} onClose={() => setAddOpen(false)} />
     </div>

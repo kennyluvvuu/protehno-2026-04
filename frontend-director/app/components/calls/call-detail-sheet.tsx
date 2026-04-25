@@ -1,4 +1,5 @@
 import { Play } from "lucide-react";
+import { useNavigate } from "react-router";
 import {
   Sheet,
   SheetContent,
@@ -72,6 +73,8 @@ export function CallDetailSheet({
   onClose,
   agentName,
 }: CallDetailSheetProps) {
+  const navigate = useNavigate();
+
   if (!record) return null;
 
   const phone = record.callerNumber ?? record.calleeNumber ?? null;
@@ -90,14 +93,24 @@ export function CallDetailSheet({
             {[record.callTo, phone, date].filter(Boolean).join(" · ")}
           </p>
           {agentName && (
-            <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => record.userId != null && navigate(`/users/${record.userId}`)}
+              className={cn(
+                "flex items-center gap-2 pt-1 text-left",
+                record.userId != null && "group cursor-pointer",
+              )}
+            >
               <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-semibold text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
                 {agentName.charAt(0).toUpperCase()}
               </div>
-              <span className="text-sm text-neutral-600 dark:text-neutral-400">
+              <span className={cn(
+                "text-sm text-neutral-600 dark:text-neutral-400",
+                record.userId != null && "group-hover:text-neutral-900 group-hover:underline dark:group-hover:text-neutral-100",
+              )}>
                 Менеджер: {agentName}
               </span>
-            </div>
+            </button>
           )}
         </SheetHeader>
 

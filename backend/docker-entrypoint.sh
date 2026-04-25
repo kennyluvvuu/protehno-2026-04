@@ -6,7 +6,7 @@ echo "[backend-entrypoint] Waiting for PostgreSQL to become available..."
 max_attempts="${DB_WAIT_MAX_ATTEMPTS:-30}"
 attempt=1
 
-until /bin/bun -e "const { Client } = require('pg'); const client = new Client({ connectionString: process.env.DATABASE_URL }); client.connect().then(() => client.end()).then(() => process.exit(0)).catch(() => process.exit(1));"; do
+until bun -e "const { Client } = require('pg'); const client = new Client({ connectionString: process.env.DATABASE_URL }); client.connect().then(() => client.end()).then(() => process.exit(0)).catch(() => process.exit(1));"; do
   if [ "$attempt" -ge "$max_attempts" ]; then
     echo "[backend-entrypoint] PostgreSQL is unavailable after ${max_attempts} attempts."
     exit 1

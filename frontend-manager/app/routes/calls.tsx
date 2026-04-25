@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react"
-import { ArrowDown, ArrowUp, ArrowUpDown, CalendarDays, Check, Filter, Loader2, Mic, Search, X } from "lucide-react"
+import { ArrowDown, ArrowUp, ArrowUpDown, CalendarDays, Check, Filter, Mic, Search, X } from "lucide-react"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
 import {
@@ -7,12 +7,14 @@ import {
     DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu"
 import { Input } from "~/components/ui/input"
+import { Pagination } from "~/components/ui/pagination"
+import { Skeleton } from "~/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/ui/table"
 import { PageHeader } from "~/components/layout"
 import { CallDetailSheet } from "~/components/calls/call-detail-sheet"
+import { usePagination } from "~/hooks/usePagination"
 import { useRecords } from "~/hooks/useRecords"
-import { useUsers } from "~/hooks/useUsers"
-import { cn } from "~/lib/utils"
+import { cn } from "~/lib/cn"
 import type { Record, RecordStatus, SortDir, SortField } from "~/types/record"
 
 type StatusFilter = RecordStatus | "all"
@@ -22,7 +24,6 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
     { value: "done", label: "Выполнено" },
     { value: "failed", label: "Ошибка" },
     { value: "processing", label: "В обработке" },
-    { value: "not_applicable", label: "Нет аудио" },
 ]
 
 function formatDuration(sec: number): string {
@@ -55,8 +56,7 @@ function StatusBadge({ status }: { status: RecordStatus }) {
 }
 
 export default function Calls() {
-    const { data: records = [], isLoading } = useRecords()
-    const { data: users = [] } = useUsers()
+    const { data: records = [], isPending } = useRecords()
     const [search, setSearch] = useState("")
     const [sortField, setSortField] = useState<SortField>("startedAt")
     const [sortDir, setSortDir] = useState<SortDir>("desc")
@@ -66,8 +66,6 @@ export default function Calls() {
     const [selected, setSelected] = useState<Record | null>(null)
     const dateFromRef = useRef<HTMLInputElement>(null)
     const dateToRef = useRef<HTMLInputElement>(null)
-
-    const userMap = useMemo(() => new Map(users.map((u) => [u.id, u.name])), [users])
 
     const filtered = useMemo(() => {
         const q = search.toLowerCase()
@@ -87,6 +85,8 @@ export default function Calls() {
         })
         return list
     }, [records, search, sortField, sortDir, statusFilter, dateFrom, dateTo])
+
+    const { page, totalPages, pageItems, setPage } = usePagination(filtered)
 
     const isDateActive = dateFrom !== "" || dateTo !== ""
 
@@ -162,22 +162,25 @@ export default function Calls() {
                         <TableRow className="bg-neutral-50/80 dark:bg-neutral-800/80">
                             <TableHead className={cn("cursor-pointer select-none")} onClick={() => toggleSort("title")}>Название <SortIcon field="title" /></TableHead>
                             <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("callTo")}>Контрагент <SortIcon field="callTo" /></TableHead>
-                            <TableHead>Менеджер</TableHead>
                             <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("startedAt")}>Дата <SortIcon field="startedAt" /></TableHead>
                             <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("durationSec")}>Длит. <SortIcon field="durationSec" /></TableHead>
                             <TableHead>Статус</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {isLoading ? (
-                            <TableRow>
-                                <TableCell colSpan={6} className="py-16 text-center">
-                                    <Loader2 className="mx-auto size-6 animate-spin text-neutral-400" />
-                                </TableCell>
-                            </TableRow>
+                        {isPending ? (
+                            Array.from({ length: 5 }).map((_, i) => (
+                                <TableRow key={i}>
+                                    <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                                    <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                                    <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                                    <TableCell><Skeleton className="h-4 w-14" /></TableCell>
+                                    <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+                                </TableRow>
+                            ))
                         ) : filtered.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={6} className="py-16 text-center">
+                                <TableCell colSpan={5} className="py-16 text-center">
                                     <div className="flex flex-col items-center gap-2">
                                         <Mic className="size-8 text-neutral-300" />
                                         <p className="text-sm text-neutral-500">Звонков не найдено</p>
@@ -186,11 +189,10 @@ export default function Calls() {
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            filtered.map((r) => (
+                            pageItems.map((r) => (
                                 <TableRow key={r.id} className="cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50" onClick={() => setSelected(r)}>
                                     <TableCell className="font-medium max-w-48 truncate">{r.title ?? `Звонок #${r.id}`}</TableCell>
                                     <TableCell className="text-neutral-600 dark:text-neutral-400">{r.callTo ?? "—"}</TableCell>
-                                    <TableCell className="text-neutral-600 dark:text-neutral-400">{r.userId ? (userMap.get(r.userId) ?? "—") : "—"}</TableCell>
                                     <TableCell className="text-neutral-500 text-sm">{r.startedAt ? new Date(r.startedAt).toLocaleDateString("ru-RU") : "—"}</TableCell>
                                     <TableCell className="text-neutral-500 text-sm tabular-nums">{r.durationSec != null ? formatDuration(r.durationSec) : "—"}</TableCell>
                                     <TableCell><StatusBadge status={r.status} /></TableCell>
@@ -201,13 +203,15 @@ export default function Calls() {
                 </Table>
             </div>
 
-            <p className="mt-2 text-xs text-neutral-400">{filtered.length} из {records.length} записей</p>
+            <div className="mt-3 flex items-center justify-between">
+                <p className="text-xs text-neutral-400">{filtered.length} из {records.length} записей</p>
+                <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+            </div>
 
             <CallDetailSheet
                 record={selected}
                 open={!!selected}
                 onClose={() => setSelected(null)}
-                agentName={selected?.userId ? userMap.get(selected.userId) : undefined}
             />
         </div>
     )
