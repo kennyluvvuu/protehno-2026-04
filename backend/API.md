@@ -217,6 +217,8 @@ Auth:
 Request format:
 - `multipart/form-data`
 - file field name: `file`
+- optional text field: `title`
+- optional text field: `callTo`
 
 Success `202`:
 ```/dev/null/upload-response.json#L1-7
@@ -229,10 +231,18 @@ Success `202`:
 }
 ```
 
+Upload field semantics:
+- `title` is optional
+- if `title` is provided during upload, backend stores it and AI uses it only as context
+- if `title` is not provided, AI generates a short title later during processing
+- `callTo` is optional and should contain the counterparty name for the call
+
 Integration rules:
 - response is only upload acknowledgment
-- do not expect `summary`, `transcription`, `tags`, `checkboxes` here
+- do not expect `summary`, `transcription`, `title`, `tags`, `checkboxes` here
 - use returned `id` for `GET /records/:id`
+- if frontend already knows the call title, it may send it in upload request
+- if frontend knows the counterparty name, it may send it as `callTo`
 
 ### Get current user records
 `GET /records`
@@ -246,7 +256,8 @@ Success `200`:
   {
     "id": 12,
     "userId": 1,
-    "callTo": null,
+    "callTo": "ООО Ромашка",
+    "title": "Первичный звонок по сделке",
     "durationSec": null,
     "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
     "transcription": null,
@@ -277,7 +288,8 @@ In progress example:
 {
   "id": 12,
   "userId": 1,
-  "callTo": null,
+  "callTo": "ООО Ромашка",
+  "title": "Первичный звонок по сделке",
   "durationSec": null,
   "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
   "transcription": null,
@@ -296,7 +308,8 @@ Done example:
 {
   "id": 12,
   "userId": 1,
-  "callTo": null,
+  "callTo": "ООО Ромашка",
+  "title": "Первичный звонок по сделке",
   "durationSec": 98,
   "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
   "transcription": "Текст расшифровки звонка",
@@ -325,7 +338,8 @@ Failed example:
 {
   "id": 12,
   "userId": 1,
-  "callTo": null,
+  "callTo": "ООО Ромашка",
+  "title": "Первичный звонок по сделке",
   "durationSec": null,
   "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
   "transcription": null,
@@ -346,8 +360,9 @@ Error semantics:
 
 Frontend interpretation:
 - `queued` / `processing` -> show loading or pending state
-- `done` -> render `transcription`, `summary`, `tags`, `checkboxes`
+- `done` -> render `title`, `callTo`, `transcription`, `summary`, `tags`, `checkboxes`
 - `failed` -> render error from `error`
+- `title` may come either from upload input or from AI generation if it was omitted during upload
 
 ---
 
@@ -377,5 +392,8 @@ Frontend interpretation:
   - `GET /records`
   - `GET /records/:id`
 - upload response status: `202`
+- upload request supports optional fields: `title`, `callTo`
 - upload response is not final AI result
 - final AI result source: `GET /records/:id`
+- record object may contain `title`
+- if upload title is missing, AI may generate `title` during processing

@@ -12,6 +12,14 @@ import {
     recordSummaryResultSchema,
 } from "./schema";
 
+type SummarizeTextOptions = {
+    title?: string | null;
+};
+
+type ProcessFileResult = RecordProcessingResult & {
+    title: string | null;
+};
+
 class RecordAiService {
     private readonly transcriptionProvider = createOpenAI({
         name: "whisperkit",
@@ -45,7 +53,10 @@ class RecordAiService {
         };
     }
 
-    async summarizeText(text: string): Promise<RecordSummaryResult> {
+    async summarizeText(
+        text: string,
+        options?: SummarizeTextOptions,
+    ): Promise<RecordSummaryResult> {
         const model = this.llmProvider.languageModel(
             Bun.env.MISTRAL_SUMMARY_MODEL ?? "mistral-small-latest",
         );
@@ -53,6 +64,10 @@ class RecordAiService {
         const prompt = [
             "You are a helpful assistant that summarizes call transcripts.",
             "Return the answer only in Russian.",
+            "",
+            options?.title
+                ? `Use this call title as additional context: ${options.title}`
+                : "If a call title was not provided on upload, infer the context from the transcript only and generate a short, meaningful Russian title for the call.",
             "",
             "Summarize the following text:",
             text,
@@ -66,6 +81,9 @@ class RecordAiService {
             "- label: string in Russian",
             "- checked: always false",
             "",
+            options?.title
+                ? "If a title was provided on upload, return title as null."
+                : "If a title was not provided on upload, return the generated title in the title field.",
             "Also return one or more relevant tags for the summary.",
         ].join("\n");
 
@@ -80,17 +98,24 @@ class RecordAiService {
         return summary.output;
     }
 
-    async processFile(file: File): Promise<RecordProcessingResult> {
+    async processFile(
+        file: File,
+        title?: string | null,
+    ): Promise<ProcessFileResult> {
         const transcription = await this.transcribeAudio(file);
-        const summarized = await this.summarizeText(transcription.text);
+        const normalizedTitle = title?.trim() || null;
+        const summarized = await this.summarizeText(transcription.text, {
+            title: normalizedTitle,
+        });
 
         return recordProcessingResultSchema.parse({
             transcription: transcription.text,
+            title: normalizedTitle ?? summarized.title ?? null,
             durationSec: transcription.durationSec,
             summary: summarized.summary,
             tags: summarized.tags,
             checkboxes: summarized.checkboxes,
-        });
+        }) as ProcessFileResult;
     }
 }
 

@@ -1,6 +1,6 @@
 import Elysia, { t } from "elysia";
 import { guardPlugin } from "../guard";
-import { uploadRecordSchema } from "./schema";
+import { uploadRecordSchema, type UploadRecord } from "./schema";
 import { IStorage } from "../../storage/interface";
 import RecordService from "./service";
 import RecordAiService from "./ai-service";
@@ -24,6 +24,7 @@ const processRecordInBackground = (
     aiService: RecordAiService,
     recordId: number,
     fileUri: string,
+    title?: string,
 ) => {
     startBackgroundTask(async () => {
         recordsLog("processing started", { recordId });
@@ -32,10 +33,11 @@ const processRecordInBackground = (
             await recordService.markProcessing(recordId);
 
             const file = await storage.readIntoFile(fileUri);
-            const result = await aiService.processFile(file);
+            const result = await aiService.processFile(file, title);
 
             await recordService.finishProcessing(recordId, {
                 transcription: result.transcription,
+                title: result.title,
                 summary: result.summary,
                 durationSec: result.durationSec,
                 tags: result.tags,
@@ -78,7 +80,8 @@ export const recordsPlugin = (
         .post(
             "/upload",
             async ({ userId, body, set }) => {
-                const file = body.file;
+                const { file, title, callTo } = body as UploadRecord;
+                const normalizedTitle = title?.trim() || null;
                 const fileUri = await storage.upload(
                     `${userId}/${Date.now()}-${file.name}`,
                     file,
@@ -87,6 +90,8 @@ export const recordsPlugin = (
                 const newRecord = await recordService.createRecord({
                     userId,
                     fileUri,
+                    callTo: callTo?.trim() || null,
+                    title: normalizedTitle,
                     status: "queued",
                 });
 
@@ -96,6 +101,7 @@ export const recordsPlugin = (
                     aiService,
                     newRecord.id,
                     fileUri,
+                    normalizedTitle || undefined,
                 );
 
                 set.status = 202;

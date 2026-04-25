@@ -7,6 +7,7 @@ export const recordTable = pgTable("records", {
         .notNull()
         .references(() => userTable.id, { onDelete: "cascade" }),
     callTo: text("call_to"),
+    title: text("title"),
     durationSec: integer("duration_sec"),
     fileUri: text("file_uri").notNull(),
     transcription: text("transcription"),

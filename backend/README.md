@@ -18,10 +18,11 @@
 Сейчас backend умеет:
 
 - регистрировать пользователей;
-- логинить пользователей и выдавать JWT;
+- логинить пользователей и устанавливать cookie-аутентификацию;
 - отдавать список пользователей;
 - отдавать пользователя по `id`;
 - принимать аудиозаписи;
+- принимать опциональные `title` и `callTo` при загрузке записи;
 - запускать AI-обработку записи в фоне;
 - отдавать список записей текущего пользователя;
 - отдавать одну запись по `id`;
@@ -93,13 +94,14 @@ fetch("http://localhost:3000/records", {
 Используются следующие статусы:
 
 - `uploaded` — файл загружен;
+- `queued` — загрузка принята, запись поставлена в очередь на фоновую обработку;
 - `processing` — AI-обработка идёт;
 - `done` — AI-обработка успешно завершена;
 - `failed` — AI-обработка завершилась ошибкой.
 
 Для UI удобно мыслить так:
 
-- `uploaded` / `processing` → показывать состояние ожидания;
+- `uploaded` / `queued` / `processing` → показывать состояние ожидания;
 - `done` → показывать результат;
 - `failed` → показывать ошибку.
 
@@ -109,12 +111,20 @@ fetch("http://localhost:3000/records", {
 
 После успешной обработки во фронтенде можно использовать:
 
+- `title` — заголовок звонка;
+- `callTo` — имя контрагента или собеседника;
 - `transcription` — текст расшифровки;
 - `summary` — краткую выжимку разговора;
 - `tags` — теги;
 - `checkboxes.tasks` — список задач;
 - `checkboxes.promises` — список обещаний;
 - `checkboxes.agreements` — список договорённостей.
+
+Важно про `title`:
+
+- `title` опционален при `POST /records/upload`;
+- если фронтенд передал `title`, backend сохранит его и AI будет использовать его только как контекст;
+- если фронтенд не передал `title`, AI может сгенерировать его во время обработки.
 
 Если обработка завершилась ошибкой, backend отдаст статус `failed` и строку в поле `error`.
 
@@ -250,13 +260,16 @@ fetch("http://localhost:3000/records", {
 
 Нужно отправлять `multipart/form-data`.
 
-Поле файла:
+Поля формы:
 
-- `file`
+- `file` — аудиофайл;
+- `title` — опциональный заголовок звонка;
+- `callTo` — опциональное имя контрагента или собеседника.
 
 ### Что делает backend
 
 - принимает файл;
+- может принять опциональные `title` и `callTo`;
 - сохраняет запись;
 - запускает AI-обработку в фоне;
 - сразу возвращает ответ.
@@ -278,8 +291,11 @@ fetch("http://localhost:3000/records", {
 ### Что важно для фронтенда
 
 - это **не финальный AI-результат**;
+- в ответе upload endpoint нет `summary`, `transcription`, `tags`, `checkboxes` и финального `title`;
 - после ответа нужно взять `id` записи;
 - дальше нужно опрашивать `GET /records/:id`;
+- если у фронтенда уже есть заголовок звонка, его можно передать в `title`;
+- если у фронтенда уже известно имя контрагента, его можно передать в `callTo`;
 - UI лучше сразу переводить в состояние “обрабатываем запись”.
 
 ---
@@ -299,7 +315,8 @@ fetch("http://localhost:3000/records", {
   {
     "id": 12,
     "userId": 1,
-    "callTo": null,
+    "callTo": "ООО Ромашка",
+    "title": "Первичный звонок по сделке",
     "durationSec": null,
     "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
     "transcription": null,
@@ -339,6 +356,8 @@ fetch("http://localhost:3000/records", {
 Через него фронтенд получает:
 
 - текущий статус обработки;
+- `title`;
+- `callTo`;
 - `transcription`;
 - `summary`;
 - `tags`;
@@ -351,7 +370,8 @@ fetch("http://localhost:3000/records", {
 {
   "id": 12,
   "userId": 1,
-  "callTo": null,
+  "callTo": "ООО Ромашка",
+  "title": "Первичный звонок по сделке",
   "durationSec": null,
   "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
   "transcription": null,
@@ -371,7 +391,8 @@ fetch("http://localhost:3000/records", {
 {
   "id": 12,
   "userId": 1,
-  "callTo": null,
+  "callTo": "ООО Ромашка",
+  "title": "Первичный звонок по сделке",
   "durationSec": 98,
   "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
   "transcription": "Текст расшифровки звонка",
@@ -410,7 +431,8 @@ fetch("http://localhost:3000/records", {
 {
   "id": 12,
   "userId": 1,
-  "callTo": null,
+  "callTo": "ООО Ромашка",
+  "title": "Первичный звонок по сделке",
   "durationSec": null,
   "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
   "transcription": null,
@@ -427,7 +449,7 @@ fetch("http://localhost:3000/records", {
 ### Что важно для фронтенда
 
 - пока статус не финальный, UI должен показывать загрузку или промежуточное состояние;
-- при `done` можно отображать результаты;
+- при `done` можно отображать `title`, `callTo` и результаты AI-обработки;
 - при `failed` нужно показать ошибку и предусмотреть UX для повторной попытки, если это нужно на уровне интерфейса.
 
 ---
@@ -446,6 +468,8 @@ fetch("http://localhost:3000/records", {
 
 Можно показывать:
 
+- `title`;
+- `callTo`;
 - `transcription`;
 - `summary`;
 - `tags`;
@@ -558,6 +582,7 @@ bun run dev
 - защищённые endpoint'ы используют cookie-аутентификацию;
 - frontend должен отправлять credentials/cookies в защищённые запросы;
 - `POST /records/upload` только запускает асинхронную обработку;
+- `POST /records/upload` принимает обязательный `file` и опциональные `title` и `callTo`;
 - финальные AI-данные нужно получать через `GET /records/:id`;
 - история записей берётся через `GET /records`.
 
@@ -752,6 +777,8 @@ Body:
 
 - `multipart/form-data`
 - поле файла: `file`
+- опциональное текстовое поле: `title`
+- опциональное текстовое поле: `callTo`
 
 Успешный ответ:
 
@@ -770,7 +797,10 @@ Body:
 - этот endpoint **не** возвращает финальный AI-результат;
 - `id` из ответа нужно использовать для последующего `GET /records/:id`;
 - интерфейс должен сразу переходить в состояние ожидания;
-- агент не должен ожидать `summary`, `transcription`, `tags` или `checkboxes` в ответе upload endpoint.
+- агент не должен ожидать `summary`, `transcription`, `title`, `tags` или `checkboxes` в ответе upload endpoint;
+- если `title` был передан при upload, его нужно трактовать как уже известный заголовок звонка;
+- если `title` не был передан, он может появиться позже в `GET /records/:id` как результат AI-обработки;
+- `callTo` нужно трактовать как имя контрагента или собеседника.
 
 ---
 
@@ -791,7 +821,8 @@ Body:
   {
     "id": 12,
     "userId": 1,
-    "callTo": null,
+    "callTo": "ООО Ромашка",
+    "title": "Первичный звонок по сделке",
     "durationSec": null,
     "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
     "transcription": null,
@@ -830,7 +861,8 @@ Body:
 {
   "id": 12,
   "userId": 1,
-  "callTo": null,
+  "callTo": "ООО Ромашка",
+  "title": "Первичный звонок по сделке",
   "durationSec": null,
   "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
   "transcription": null,
@@ -850,7 +882,8 @@ Body:
 {
   "id": 12,
   "userId": 1,
-  "callTo": null,
+  "callTo": "ООО Ромашка",
+  "title": "Первичный звонок по сделке",
   "durationSec": 98,
   "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
   "transcription": "Текст расшифровки звонка",
@@ -889,7 +922,8 @@ Body:
 {
   "id": 12,
   "userId": 1,
-  "callTo": null,
+  "callTo": "ООО Ромашка",
+  "title": "Первичный звонок по сделке",
   "durationSec": null,
   "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
   "transcription": null,
@@ -908,8 +942,9 @@ Body:
 - это основной endpoint для страницы детали записи;
 - именно он даёт финальные AI-данные;
 - polling должен останавливаться на `done` или `failed`;
-- при `done` нужно отображать `transcription`, `summary`, `tags`, `checkboxes`;
-- при `failed` нужно отображать ошибку из `error`.
+- при `done` нужно отображать `title`, `callTo`, `transcription`, `summary`, `tags`, `checkboxes`;
+- при `failed` нужно отображать ошибку из `error`;
+- `title` может быть либо переданным пользователем при upload, либо сгенерированным AI, если при upload он отсутствовал.
 
 ---
 
@@ -923,6 +958,7 @@ Body:
   - `RecordListItem`
   - `RecordDetails`
   - `RecordStatus`
+  - `UploadRecordPayload`
 - вынести API-вызовы в отдельный клиент;
 - централизованно включить отправку credentials/cookies;
 - реализовать polling как отдельный hook или utility;

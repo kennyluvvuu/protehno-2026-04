@@ -36,6 +36,7 @@ export const getRecordSchema = createSelectSchema(recordTable).extend({
 export type GetRecord = z.infer<typeof getRecordSchema>;
 
 export const recordSummaryResultSchema = z.object({
+    title: z.string().nullable().optional(),
     summary: z.string(),
     tags: z.array(z.string()),
     checkboxes: aiCheckboxGroupsSchema,
@@ -44,6 +45,7 @@ export type RecordSummaryResult = z.infer<typeof recordSummaryResultSchema>;
 
 export const recordProcessingResultSchema = z.object({
     transcription: z.string(),
+    title: z.string().nullable().optional(),
     durationSec: z.number().int().nonnegative().nullable(),
     summary: z.string(),
     tags: z.array(z.string()),
@@ -55,6 +57,8 @@ export type RecordProcessingResult = z.infer<
 
 export const uploadRecordSchema = t.Object({
     file: t.File({ filetype: "audio/*" }),
+    title: t.Optional(t.String()),
+    callTo: t.Optional(t.String()),
 });
 export type UploadRecord = Static<typeof uploadRecordSchema>;
 

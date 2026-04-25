@@ -14,6 +14,7 @@ type TagRow = typeof tagsTable.$inferSelect;
 type FinishRecordProcessingPayload = {
     transcription: string;
     summary: string;
+    title?: string | null;
     durationSec?: number | null;
     tags?: string[];
     checkboxes?: AiCheckboxGroups | null;
@@ -180,6 +181,7 @@ class RecordService {
             .set({
                 transcription: payload.transcription,
                 summary: payload.summary,
+                title: payload.title ?? null,
                 durationSec: payload.durationSec ?? null,
                 status: "done",
                 error: null,
