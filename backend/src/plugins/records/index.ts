@@ -23,13 +23,23 @@ const processRecordInBackground = (
     storage: IStorage,
     aiService: RecordAiService,
     recordId: number,
-    fileUri: string,
+    fileUri: string | null,
     title?: string,
 ) => {
     startBackgroundTask(async () => {
         recordsLog("processing started", { recordId });
 
         try {
+            // Guard: fileUri may be null for records that have no audio
+            if (!fileUri) {
+                recordsLog("skipping processing — no audio file", { recordId });
+                await recordService.failProcessing(
+                    recordId,
+                    "No audio file available for processing",
+                );
+                return;
+            }
+
             await recordService.markProcessing(recordId);
 
             const file = await storage.readIntoFile(fileUri);
@@ -121,6 +131,9 @@ export const recordsPlugin = (
         .get("/", async ({ userId }: { userId: number }) => {
             return (await recordService.getRecords(userId)) ?? [];
         })
+        .get("/feed", async ({ userId }: { userId: number }) => {
+            return (await recordService.getRecordsFeed(userId)) ?? [];
+        })
         .get(
             "/:id",
             async ({ params, userId, set }) => {
@@ -154,6 +167,26 @@ export const recordsPlugin = (
             {
                 params: t.Object({
                     id: t.String(),
+                }),
+            },
+        )
+        .get(
+            "/by-mango-entry/:entryId",
+            async ({ params, set }) => {
+                const record = await recordService.findByMangoEntryId(
+                    params.entryId,
+                );
+
+                if (!record) {
+                    set.status = 404;
+                    return { message: "Record not found" };
+                }
+
+                return record;
+            },
+            {
+                params: t.Object({
+                    entryId: t.String(),
                 }),
             },
         );

@@ -6,5 +6,6 @@ export const userTable = pgTable("users", {
     fio: text(),
     role: text().array().notNull(),
     email: text().unique().notNull(),
+    mangoUserId: integer("mango_user_id").unique(),
     password_hash: text().notNull(),
 });

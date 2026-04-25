@@ -1,0 +1,40 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
+import { usersApi, type CreateUserPayload } from "~/axios/users"
+
+const USERS_KEY = ["users"]
+
+export function useUsers() {
+    return useQuery({
+        queryKey: USERS_KEY,
+        queryFn: () => usersApi.getAll(),
+    })
+}
+
+export function useCreateUser() {
+    const qc = useQueryClient()
+    return useMutation({
+        mutationFn: (payload: CreateUserPayload) => usersApi.create(payload),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: USERS_KEY })
+            toast.success("Менеджер добавлен")
+        },
+        onError: () => {
+            toast.error("Не удалось добавить менеджера")
+        },
+    })
+}
+
+export function useDeleteUser() {
+    const qc = useQueryClient()
+    return useMutation({
+        mutationFn: (id: number) => usersApi.delete(id),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: USERS_KEY })
+            toast.success("Пользователь удалён")
+        },
+        onError: () => {
+            toast.error("Не удалось удалить пользователя")
+        },
+    })
+}

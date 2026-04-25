@@ -1,7 +1,13 @@
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { eq } from "drizzle-orm";
 import { userTable } from "./model";
-import { BaseUser, CreateUser, GetUser } from "./schema";
+import {
+    baseUserSchema,
+    BaseUser,
+    CreateUser,
+    GetUser,
+    getUserSchema,
+} from "./schema";
 
 const ADMIN_EMAIL = "admin@example.com";
 const ADMIN_ROLES = ["director", "manager"] as const;
@@ -11,16 +17,20 @@ class UserService {
     constructor(private readonly db: NodePgDatabase) {
         this.db = db;
     }
+
     static withoutPasswordHash(user: BaseUser): GetUser {
-        const { password_hash: _, ...userWithoutPassword } = user;
-        return userWithoutPassword;
+        const parsedUser = baseUserSchema.parse(user);
+        const { password_hash: _, ...userWithoutPassword } = parsedUser;
+        return getUserSchema.parse(userWithoutPassword);
     }
+
     async createUser(user: CreateUser): Promise<GetUser> {
         try {
             const passwordHash = await Bun.password.hash(user.password);
             const isAdmin = user.email === ADMIN_EMAIL;
             const fio = isAdmin ? ADMIN_FULL_NAME : (user.fio ?? null);
             const role = isAdmin ? [...ADMIN_ROLES] : user.role;
+
             const [newUser] = await this.db
                 .insert(userTable)
                 .values({
@@ -28,39 +38,51 @@ class UserService {
                     name: user.name,
                     fio,
                     role,
+                    mangoUserId: user.mangoUserId ?? null,
                     password_hash: passwordHash,
                 })
                 .returning();
+
             if (!newUser) {
                 throw new Error("Failed to create user");
             }
-            let { password_hash: _, ...userWithoutPassword } = newUser;
-            return userWithoutPassword;
+
+            return UserService.withoutPasswordHash(newUser);
         } catch (error: any) {
-            let errorCode = error?.code || error?.cause.code;
+            const errorCode = error?.code || error?.cause?.code;
             if (errorCode === "23505") {
                 throw new Error("Email already in use");
             }
             throw error;
         }
     }
+
     async getUserById(id: number): Promise<GetUser | undefined> {
         const [user] = await this.db
             .select()
             .from(userTable)
             .where(eq(userTable.id, id));
+
         if (!user) {
             return undefined;
         }
+
         return UserService.withoutPasswordHash(user);
     }
+
     async getUserByEmail(email: string): Promise<GetUser | undefined> {
         const [user] = await this.db
             .select()
             .from(userTable)
             .where(eq(userTable.email, email));
-        return user;
+
+        if (!user) {
+            return undefined;
+        }
+
+        return UserService.withoutPasswordHash(user);
     }
+
     async validateCredentials(
         email: string,
         password: string,
@@ -69,21 +91,58 @@ class UserService {
             .select()
             .from(userTable)
             .where(eq(userTable.email, email));
+
         if (!user) {
             return undefined;
         }
+
         const validPassword = await Bun.password.verify(
             password,
             user.password_hash,
         );
+
         if (!validPassword) {
             return undefined;
         }
+
         return UserService.withoutPasswordHash(user);
     }
+
     async getAllUsers(): Promise<GetUser[]> {
         const users = await this.db.select().from(userTable);
         return users.map(UserService.withoutPasswordHash);
+    }
+
+    async getUserByMangoUserId(
+        mangoUserId: number,
+    ): Promise<GetUser | undefined> {
+        const [user] = await this.db
+            .select()
+            .from(userTable)
+            .where(eq(userTable.mangoUserId, mangoUserId));
+
+        if (!user) {
+            return undefined;
+        }
+
+        return UserService.withoutPasswordHash(user);
+    }
+
+    async setMangoUserId(
+        userId: number,
+        mangoUserId: number | null,
+    ): Promise<GetUser> {
+        const [updated] = await this.db
+            .update(userTable)
+            .set({ mangoUserId })
+            .where(eq(userTable.id, userId))
+            .returning();
+
+        if (!updated) {
+            throw new Error("User not found");
+        }
+
+        return UserService.withoutPasswordHash(updated);
     }
 }
 
