@@ -7,6 +7,7 @@ import { AuthShell } from "~/components/layout"
 import { Button } from "~/components/ui/button"
 import { Field } from "~/components/ui/field"
 import { Input } from "~/components/ui/input"
+import { getApiErrorMessage } from "~/lib/api-error"
 import { loginSchema, type LoginSchema } from "~/schemas/auth"
 import { useAuthStore } from "~/stores/useAuthStore"
 
@@ -37,8 +38,8 @@ export default function Login() {
             toast.success("Добро пожаловать")
             await revalidate()
             navigate("/", { replace: true })
-        } catch {
-            toast.error("Неверный email или пароль")
+        } catch (error) {
+            toast.error(getApiErrorMessage(error, "Не удалось выполнить вход"))
         }
     }
 

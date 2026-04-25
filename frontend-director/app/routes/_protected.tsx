@@ -7,6 +7,10 @@ import type { User } from "~/types/auth"
 import { authApi } from "~/axios/auth"
 import type { Route } from "./+types/_protected"
 
+export function shouldRevalidate() {
+    return false
+}
+
 export async function loader({ request }: Route.LoaderArgs) {
     try {
         const cookie = request.headers.get("cookie") ?? undefined
