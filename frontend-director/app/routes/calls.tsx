@@ -56,12 +56,15 @@ function formatMangoDate(d: Date): string {
   );
 }
 
-function getDefaultSyncRange(): { startDate: string; endDate: string } {
-  const now = new Date();
-  return {
-    startDate: formatMangoDate(new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0)),
-    endDate: formatMangoDate(now),
-  };
+const MIGRATION_YEARS_BACK = 2;
+const MIGRATION_LIMIT = 500;
+const MIGRATION_OFFSET = 0;
+const MIGRATION_MAX_PAGES = 200;
+
+function getMigrationStartDate(): string {
+  const start = new Date();
+  start.setFullYear(start.getFullYear() - MIGRATION_YEARS_BACK);
+  return formatMangoDate(start);
 }
 import type {
   DirectionKind,
@@ -340,8 +343,16 @@ export default function Calls() {
 
   const syncMutation = useMutation({
     mutationFn: async () => {
-      const { startDate, endDate } = getDefaultSyncRange();
-      return mangoApi.sync({ startDate, endDate, limit: 500, offset: 0, downloadRecordings: true });
+      const startDate = getMigrationStartDate();
+      const endDate = formatMangoDate(new Date());
+      return mangoApi.sync({
+        startDate,
+        endDate,
+        limit: MIGRATION_LIMIT,
+        offset: MIGRATION_OFFSET,
+        maxPages: MIGRATION_MAX_PAGES,
+        downloadRecordings: true,
+      });
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["records"] });

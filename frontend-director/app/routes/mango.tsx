@@ -47,6 +47,11 @@ const MANGO_TABS: Array<{
   { value: "sync", label: "Синхронизация звонков" },
 ];
 
+const MIGRATION_YEARS_BACK = 2;
+const MIGRATION_LIMIT = 500;
+const MIGRATION_OFFSET = 0;
+const MIGRATION_MAX_PAGES = 200;
+
 const createLocalUserSchema = z.object({
   name: z.string().trim().min(2, { message: "Минимум 2 символа" }),
   fio: z.string().trim().optional(),
@@ -84,14 +89,10 @@ function formatMangoDate(value: Date): string {
   );
 }
 
-function getDefaultSyncRange(): { startDate: string; endDate: string } {
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
-
-  return {
-    startDate: formatMangoDate(startOfMonth),
-    endDate: formatMangoDate(now),
-  };
+function getMigrationStartDate(): string {
+  const start = new Date();
+  start.setFullYear(start.getFullYear() - MIGRATION_YEARS_BACK);
+  return formatMangoDate(start);
 }
 
 function CreateLocalUserDialog({
@@ -258,13 +259,15 @@ export default function MangoPage() {
 
   const syncMutation = useMutation({
     mutationFn: async () => {
-      const { startDate, endDate } = getDefaultSyncRange();
+      const startDate = getMigrationStartDate();
+      const endDate = formatMangoDate(new Date());
 
       return mangoApi.sync({
         startDate,
         endDate,
-        limit: 500,
-        offset: 0,
+        limit: MIGRATION_LIMIT,
+        offset: MIGRATION_OFFSET,
+        maxPages: MIGRATION_MAX_PAGES,
         downloadRecordings: true,
       });
     },
@@ -424,6 +427,7 @@ export default function MangoPage() {
   ).length;
   const withoutCandidatesCount = items.length - suggestionCount;
   const autoCreatableItems = items.filter((item) => item.linkedUserId == null);
+  const migrationStartDate = getMigrationStartDate();
 
   const handleOpenCreate = (candidate: MangoDirectoryCandidate) => {
     setSelectedCandidate(candidate);
@@ -682,15 +686,15 @@ export default function MangoPage() {
               Ручная синхронизация Mango
             </h2>
             <p className="text-xs text-neutral-500">
-              Загружает звонки с начала текущего месяца по текущее время
+              Миграционный режим: загружает все доступные звонки из Mango
             </p>
           </div>
 
           <div className="space-y-4">
             <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
-              Для демо используется безопасный диапазон:
-              <br />
-              <strong>от начала текущего месяца до текущего момента</strong>
+              <strong>Одна кнопка для миграции:</strong> диапазон с{" "}
+              {migrationStartDate} до текущего момента, limit={MIGRATION_LIMIT}
+              , maxPages={MIGRATION_MAX_PAGES}, downloadRecordings=true.
             </div>
 
             <Button
