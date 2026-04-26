@@ -255,6 +255,7 @@ type SyncOptions = {
     endDate: string;
     limit?: number;
     offset?: number;
+    maxPages?: number;
     pollIntervalMs?: number;
     maxAttempts?: number;
     downloadRecordings?: boolean;
@@ -275,6 +276,7 @@ const DEFAULT_POLL_INTERVAL_MS = 3000;
 const DEFAULT_MAX_ATTEMPTS = 30;
 const DEFAULT_LIMIT = 500;
 const DEFAULT_OFFSET = 0;
+const DEFAULT_MAX_PAGES = 50;
 
 const assertDirector = (userRole: UserRole, set: ProtectedContext["set"]) => {
     if (userRole !== "director") {
@@ -1102,19 +1104,46 @@ class MangoPollingSyncService {
     }
 
     async syncCalls(options: SyncOptions): Promise<SyncSummary> {
+        const limit = options.limit ?? DEFAULT_LIMIT;
+        const offset = options.offset ?? DEFAULT_OFFSET;
+        const maxPages = options.maxPages ?? DEFAULT_MAX_PAGES;
+
         syncLog("sync calls started", {
             startDate: options.startDate,
             endDate: options.endDate,
-            limit: options.limit ?? DEFAULT_LIMIT,
-            offset: options.offset ?? DEFAULT_OFFSET,
+            limit,
+            offset,
+            maxPages,
             pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
             maxAttempts: options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
             downloadRecordings: options.downloadRecordings ?? true,
         });
 
         const directory = await this.loadUsersDirectory();
-        const key = await this.requestCallsReport(options);
-        const rawCalls = await this.pollCallsReport(key, options);
+        const rawCalls: MangoCallContext[] = [];
+
+        for (let page = 0; page < maxPages; page++) {
+            const pageOffset = offset + page * limit;
+            const key = await this.requestCallsReport({
+                ...options,
+                limit,
+                offset: pageOffset,
+            });
+
+            const pageCalls = await this.pollCallsReport(key, options);
+            rawCalls.push(...pageCalls);
+
+            syncLog("raw calls page received", {
+                page,
+                pageOffset,
+                pageSize: pageCalls.length,
+                totalCollected: rawCalls.length,
+            });
+
+            if (pageCalls.length < limit) {
+                break;
+            }
+        }
 
         syncLog("raw calls received", {
             count: rawCalls.length,
@@ -1185,7 +1214,7 @@ class MangoPollingSyncService {
                 normalized.mangoUserId,
             );
 
-            if (normalized.isMissed || normalized.recordingIds.length === 0) {
+            if (normalized.recordingIds.length === 0) {
                 skippedNoAudio += 1;
                 continue;
             }
@@ -1237,6 +1266,7 @@ const syncBodySchema = t.Object({
     endDate: t.String(),
     limit: t.Optional(t.Number()),
     offset: t.Optional(t.Number()),
+    maxPages: t.Optional(t.Number()),
     pollIntervalMs: t.Optional(t.Number()),
     maxAttempts: t.Optional(t.Number()),
     downloadRecordings: t.Optional(t.Boolean()),
