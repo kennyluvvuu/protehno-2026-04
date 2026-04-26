@@ -8,7 +8,16 @@ export interface UploadPayload {
   callTo?: string;
 }
 
+export interface RecordAudioMeta {
+  url: string;
+  downloadUrl: string;
+}
+
 export const recordsApi = {
+  getAudioMeta: (id: number): RecordAudioMeta => {
+    const downloadUrl = `/api/records/${id}/download`;
+    return { url: downloadUrl, downloadUrl };
+  },
   upload: async (payload: UploadPayload): Promise<UploadResponse> => {
     assertRequestCooldown("records:upload", 1500);
     const form = new FormData();

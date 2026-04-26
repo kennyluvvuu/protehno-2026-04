@@ -1,15 +1,23 @@
+import { Download } from "lucide-react";
+import { useEffect, useMemo, useRef } from "react";
+import AudioPlayer from "react-h5-audio-player";
+import "react-h5-audio-player/lib/styles.css";
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
+  SheetDescription,
 } from "~/components/ui/sheet";
+import { recordsApi } from "~/axios/records";
+import { Button } from "~/components/ui/button";
+import { cn } from "~/lib/utils";
 import type { DirectionKind, Record } from "~/types/record";
 
 function formatDuration(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
+  const safeSec = Number.isFinite(sec) && sec >= 0 ? Math.floor(sec) : 0;
+  const m = Math.floor(safeSec / 60);
+  const s = safeSec % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
@@ -28,11 +36,9 @@ function getDisplayPhone(record: Record): string | null {
   if (record.directionKind === "inbound") {
     return record.callerNumber ?? record.calleeNumber ?? null;
   }
-
   if (record.directionKind === "outbound") {
     return record.calleeNumber ?? record.callerNumber ?? null;
   }
-
   return record.callerNumber ?? record.calleeNumber ?? null;
 }
 
@@ -56,14 +62,18 @@ function ReadonlyChecklist({
       </p>
       <ul className="flex flex-col gap-2">
         {items.map((item, index) => (
-          <li key={`${title}-${index}`} className="flex items-start gap-2.5">
+          <li
+            key={`${title}-${item.label}-${index}`}
+            className="flex items-start gap-2.5"
+          >
             <div
               aria-hidden="true"
-              className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border ${
+              className={cn(
+                "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border",
                 item.checked
                   ? "border-neutral-500 bg-neutral-700 dark:border-neutral-400 dark:bg-neutral-500"
-                  : "border-neutral-300 bg-white dark:border-neutral-600 dark:bg-neutral-800"
-              }`}
+                  : "border-neutral-300 bg-white dark:border-neutral-600 dark:bg-neutral-800",
+              )}
             >
               {item.checked && (
                 <svg
@@ -82,9 +92,10 @@ function ReadonlyChecklist({
               )}
             </div>
             <span
-              className={`text-sm leading-5 ${
-                item.checked ? "text-neutral-400 line-through" : ""
-              }`}
+              className={cn(
+                "text-sm leading-5",
+                item.checked && "line-through text-neutral-400",
+              )}
             >
               {item.label}
             </span>
@@ -108,21 +119,50 @@ export function CallDetailSheet({
   onClose,
   agentName,
 }: CallDetailSheetProps) {
-  if (!record) return null;
+  const playerRef = useRef<AudioPlayer | null>(null);
+  const recordId = record?.id ?? null;
+  const phone = record ? getDisplayPhone(record) : null;
+  const counterparty = record ? getDisplayCounterparty(record) : null;
+  const directionLabel = record
+    ? getDirectionLabel(record.directionKind ?? null)
+    : null;
+  const date = record ? formatRecordDate(record) : null;
+  const durationValue = record
+    ? (record.durationSec ?? record.talkDurationSec ?? null)
+    : null;
+  const canPlayAudio = Boolean(record?.fileUri && record?.hasAudio !== false);
+  const audioMeta = useMemo(
+    () => (recordId != null ? recordsApi.getAudioMeta(recordId) : null),
+    [recordId],
+  );
 
-  const phone = getDisplayPhone(record);
-  const counterparty = getDisplayCounterparty(record);
-  const directionLabel = getDirectionLabel(record.directionKind ?? null);
-  const date = formatRecordDate(record);
-  const duration = record.durationSec ?? record.talkDurationSec ?? null;
+  useEffect(() => {
+    if (open) return;
+    const audio = playerRef.current?.audio?.current;
+    if (!audio) return;
+    audio.pause();
+    audio.currentTime = 0;
+  }, [open, recordId]);
+
+  if (!record) return null;
 
   return (
     <Sheet open={open} onOpenChange={(value) => !value && onClose()}>
-      <SheetContent className="flex h-dvh w-full max-w-xl flex-col overflow-hidden p-0 sm:max-w-xl">
+      <SheetContent className="flex h-dvh w-full max-w-3xl flex-col overflow-hidden p-0 sm:max-w-3xl">
         <SheetHeader className="shrink-0 border-b border-neutral-200 px-6 py-5 dark:border-neutral-700">
-          <SheetTitle className="pr-8 text-base">
-            {record.title ?? `Звонок #${record.id}`}
-          </SheetTitle>
+          <div className="flex items-start justify-between gap-3 pr-8">
+            <SheetTitle className="text-base">
+              {record.title ?? `Звонок #${record.id}`}
+            </SheetTitle>
+            {canPlayAudio && audioMeta?.downloadUrl && (
+              <Button variant="outline" size="sm" asChild className="shrink-0 gap-2">
+                <a href={audioMeta.downloadUrl} download>
+                  <Download className="size-4" />
+                  Скачать
+                </a>
+              </Button>
+            )}
+          </div>
           <SheetDescription className="text-sm text-neutral-500">
             {[counterparty, phone, directionLabel, date]
               .filter(Boolean)
@@ -143,13 +183,29 @@ export function CallDetailSheet({
 
         <div className="flex-1 overflow-y-auto px-6 py-6">
           <div className="flex flex-col gap-5">
-            {duration != null && (
+            {canPlayAudio && (
+              <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-800">
+                <div className="[&_.rhap_container]:bg-transparent [&_.rhap_container]:p-0 [&_.rhap_container]:shadow-none [&_.rhap_current-time]:text-sm [&_.rhap_download-progress]:bg-neutral-200 dark:[&_.rhap_download-progress]:bg-neutral-600 [&_.rhap_main-controls-button]:text-neutral-700 dark:[&_.rhap_main-controls-button]:text-neutral-200 [&_.rhap_main-controls-button_svg]:fill-current [&_.rhap_play-pause-button]:text-neutral-700 dark:[&_.rhap_play-pause-button]:text-neutral-200 [&_.rhap_play-pause-button_svg]:fill-current [&_.rhap_progress-bar]:bg-neutral-200 dark:[&_.rhap_progress-bar]:bg-neutral-600 [&_.rhap_progress-filled]:bg-primary [&_.rhap_progress-indicator]:bg-primary [&_.rhap_time]:text-sm [&_.rhap_time]:text-neutral-500 dark:[&_.rhap_time]:text-neutral-400 [&_.rhap_volume-button]:text-neutral-700 dark:[&_.rhap_volume-button]:text-neutral-200 [&_.rhap_volume-button_svg]:fill-current [&_.rhap_volume-indicator]:bg-primary [&_.rhap_volume-bar]:bg-neutral-200 dark:[&_.rhap_volume-bar]:bg-neutral-600">
+                  <AudioPlayer
+                    ref={playerRef}
+                    src={audioMeta?.url}
+                    preload="metadata"
+                    showJumpControls={false}
+                    customAdditionalControls={[]}
+                    customVolumeControls={[]}
+                    layout="stacked-reverse"
+                  />
+                </div>
+              </div>
+            )}
+
+            {durationValue != null && (
               <div className="flex flex-col gap-0.5 rounded-lg border border-neutral-100 p-3 dark:border-neutral-700">
                 <p className="text-[10px] uppercase tracking-wide text-neutral-400">
                   Длительность
                 </p>
                 <p className="text-sm font-medium">
-                  {formatDuration(duration)}
+                  {formatDuration(durationValue)}
                 </p>
               </div>
             )}
