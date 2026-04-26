@@ -12,6 +12,11 @@ services:
         condition: service_started
     ports:
       - "${CADDY_HTTP_PORT:-80}:80"
+    environment:
+      CADDY_API_DOMAIN: ${CADDY_API_DOMAIN:-}
+      CADDY_MANAGER_DOMAIN: ${CADDY_MANAGER_DOMAIN:-}
+      CADDY_DIRECTOR_DOMAIN: ${CADDY_DIRECTOR_DOMAIN:-}
+      CADDY_LANDING_DOMAIN: ${CADDY_LANDING_DOMAIN:-}
     volumes:
       - ${CADDYFILE_PATH:-./Caddyfile}:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
