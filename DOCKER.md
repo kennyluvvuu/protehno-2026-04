@@ -32,6 +32,7 @@ cp .env.example .env
 - `POSTGRES_USER`
 - `POSTGRES_PASSWORD`
 - `JWT_SECRET`
+- `SERVICE_API_KEY`
 - `GROQ_API_KEY`
 - `MISTRAL_API_KEY`
 
