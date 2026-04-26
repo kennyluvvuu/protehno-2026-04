@@ -4,7 +4,6 @@ import {
   LogOut,
   Settings,
   Users,
-  PhoneCall,
 } from "lucide-react";
 import { NavLink, useNavigate, useRevalidator } from "react-router";
 import { toast } from "sonner";
@@ -76,26 +75,14 @@ export function Sidebar({
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5">
-        {[
-          ...nav,
-          ...(user.role === "director"
-            ? [
-                {
-                  to: "/mango",
-                  label: "Mango Office",
-                  icon: PhoneCall,
-                  end: false,
-                },
-              ]
-            : []),
-        ].map(({ to, label, icon: Icon, end }) => (
+        {nav.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
             className={({ isActive }) =>
               cn(
-                "flex h-9 items-center rounded-md text-sm transition-colors",
+                "cursor-pointer flex h-9 items-center rounded-md text-sm transition-colors",
                 isCollapsed ? "justify-center px-0" : "gap-2.5 px-2.5",
                 isActive
                   ? "bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100"
@@ -120,7 +107,7 @@ export function Sidebar({
           <button
             type="button"
             onClick={() => navigate("/settings")}
-            className="flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs font-semibold text-white transition-opacity hover:opacity-80 dark:bg-neutral-700"
+            className="cursor-pointer flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs font-semibold text-white transition-opacity hover:opacity-80 dark:bg-neutral-700"
           >
             {displayName.charAt(0).toUpperCase()}
           </button>
@@ -129,7 +116,7 @@ export function Sidebar({
             <button
               type="button"
               onClick={() => navigate("/settings")}
-              className="min-w-0 flex-1 text-left transition-opacity hover:opacity-70"
+              className="cursor-pointer min-w-0 flex-1 text-left transition-opacity hover:opacity-70"
             >
               <p className="truncate text-xs font-medium">{displayName}</p>
               <p className="truncate text-[10px] text-neutral-400">
@@ -142,7 +129,7 @@ export function Sidebar({
             type="button"
             onClick={handleLogout}
             aria-label="Выйти из системы"
-            className="flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+            className="cursor-pointer flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
           >
             <LogOut className="size-3.5" />
           </button>
