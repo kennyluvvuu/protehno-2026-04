@@ -31,58 +31,157 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Connectio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <style>
-    body {
-      margin: 0;
-      font-family: system-ui, sans-serif;
-      background: #0b1020;
-      color: #f5f7fb;
-      display: grid;
-      place-items: center;
-      min-height: 100vh;
+    :root {
+      --bg: #2e333f;
+      --card: #343945;
+      --card-border: rgba(152, 165, 191, 0.28);
+      --text: #eff3fb;
+      --muted: #bec8dc;
+      --accent: #6e7eed;
+      --accent-hover: #7f8df3;
+      --button-dark: #414957;
+      --button-dark-hover: #4a5363;
     }
-    .card {
-      width: min(560px, calc(100vw - 32px));
-      background: #121937;
-      border: 1px solid #27305e;
-      border-radius: 16px;
-      padding: 24px;
+
+    * {
       box-sizing: border-box;
     }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      font-family: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 10% 15%, rgba(110, 126, 237, 0.34), transparent 38%),
+        radial-gradient(circle at 82% 86%, rgba(110, 126, 237, 0.24), transparent 42%),
+        linear-gradient(180deg, #252a34 0%, var(--bg) 100%);
+    }
+
+    .card {
+      width: min(640px, 100%);
+      border-radius: 24px;
+      border: 1px solid var(--card-border);
+      background:
+        linear-gradient(165deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.01) 58%),
+        var(--card);
+      box-shadow:
+        0 30px 70px rgba(15, 19, 30, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      padding: 30px 28px;
+      backdrop-filter: blur(2px);
+      animation: card-enter 520ms ease-out both;
+    }
+
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      padding: 6px 10px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #d6ddf3;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 999px;
+    }
+
+    .kicker::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #8ea0ff;
+      box-shadow: 0 0 14px rgba(142, 160, 255, 0.9);
+    }
+
     h1 {
-      margin: 0 0 12px;
-      font-size: 28px;
+      margin: 0;
+      font-size: clamp(28px, 4.6vw, 42px);
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+      font-weight: 800;
     }
+
     p {
-      margin: 0 0 20px;
-      color: #b9c1e0;
-      line-height: 1.5;
+      margin: 14px 0 0;
+      max-width: 48ch;
+      color: var(--muted);
+      line-height: 1.56;
+      font-size: 15px;
     }
+
     .links {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
+      margin-top: 26px;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
     }
+
     a {
       text-decoration: none;
-      color: white;
-      background: #3b82f6;
-      padding: 10px 14px;
-      border-radius: 10px;
+      color: #ffffff;
       font-weight: 600;
+      font-size: 14px;
+      border-radius: 12px;
+      padding: 12px 14px;
+      transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease;
+      border: 1px solid transparent;
+      text-align: center;
     }
+
+    a:hover {
+      transform: translateY(-1px);
+    }
+
+    a.primary {
+      background: var(--accent);
+      box-shadow: 0 8px 22px rgba(110, 126, 237, 0.35);
+    }
+
+    a.primary:hover {
+      background: var(--accent-hover);
+      box-shadow: 0 10px 24px rgba(110, 126, 237, 0.43);
+    }
+
     a.secondary {
-      background: #1f2937;
+      background: var(--button-dark);
+      border-color: rgba(200, 208, 230, 0.12);
+    }
+
+    a.secondary:hover {
+      background: var(--button-dark-hover);
+    }
+
+    @keyframes card-enter {
+      from {
+        opacity: 0;
+        transform: translateY(14px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
     }
   </style>
 </head>
 <body>
   <div class="card">
+    <span class="kicker">connectio hub</span>
     <h1>Connectio</h1>
-    <p>Выберите интерфейс приложения.</p>
+    <p>Единая точка входа для рабочих интерфейсов. Выберите нужную панель и продолжайте работу без лишних переходов.</p>
     <div class="links">
-      <a href="https://{$CADDY_MANAGER_DOMAIN}">Открыть manager</a>
-      <a href="https://{$CADDY_DIRECTOR_DOMAIN}">Открыть director</a>
+      <a class="primary" href="https://{$CADDY_MANAGER_DOMAIN}">Открыть manager</a>
+      <a class="primary" href="https://{$CADDY_DIRECTOR_DOMAIN}">Открыть director</a>
       <a class="secondary" href="https://{$CADDY_API_DOMAIN}/health">Проверить API</a>
     </div>
   </div>
