@@ -78,6 +78,7 @@ async function bootstrapServer() {
                 recordsService,
                 userService,
                 localStorage,
+                aiService,
             ),
         )
         .listen(3000);

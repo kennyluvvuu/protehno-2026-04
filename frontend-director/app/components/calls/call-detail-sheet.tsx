@@ -1,8 +1,18 @@
-import { Download, Square } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { Download, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AudioPlayer from "react-h5-audio-player";
 import "react-h5-audio-player/lib/styles.css";
 import { useNavigate } from "react-router";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "~/components/ui/alert-dialog";
 import {
   Sheet,
   SheetContent,
@@ -12,6 +22,7 @@ import {
 } from "~/components/ui/sheet";
 import { recordsApi } from "~/axios/records";
 import { Button } from "~/components/ui/button";
+import { useDeleteRecord } from "~/hooks/useRecords";
 import { cn } from "~/lib/utils";
 import type { CheckboxItem, DirectionKind, Record } from "~/types/record";
 
@@ -124,6 +135,8 @@ export function CallDetailSheet({
 }: CallDetailSheetProps) {
   const navigate = useNavigate();
   const playerRef = useRef<AudioPlayer | null>(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const deleteMutation = useDeleteRecord();
   const recordId = record?.id ?? null;
   const phone = record ? getDisplayPhone(record) : null;
   const counterparty = record ? getDisplayCounterparty(record) : null;
@@ -152,21 +165,36 @@ export function CallDetailSheet({
 
   if (!record) return null;
 
-  const handleStopAudio = (): void => {
-    const audio = playerRef.current?.audio?.current;
-    if (!audio) return;
-
-    audio.pause();
-    audio.currentTime = 0;
-  };
-
   return (
+    <>
     <Sheet open={open} onOpenChange={(value) => !value && onClose()}>
       <SheetContent className="flex h-dvh w-full max-w-3xl flex-col overflow-hidden p-0 sm:max-w-3xl">
         <SheetHeader className="shrink-0 border-b border-neutral-200 px-6 py-5 dark:border-neutral-700">
-          <SheetTitle className="pr-8 text-base">
-            {record.title ?? `Звонок #${record.id}`}
-          </SheetTitle>
+          <div className="flex items-start justify-between gap-3 pr-8">
+            <SheetTitle className="text-base">
+              {record.title ?? `Звонок #${record.id}`}
+            </SheetTitle>
+            <div className="flex shrink-0 items-center gap-2">
+              {canPlayAudio && audioMeta?.downloadUrl && (
+                <Button variant="outline" size="sm" asChild className="gap-2">
+                  <a href={audioMeta.downloadUrl} download>
+                    <Download className="size-4" />
+                    Скачать
+                  </a>
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setConfirmDeleteOpen(true)}
+                disabled={deleteMutation.isPending}
+              >
+                <Trash2 className="size-4" />
+                Удалить
+              </Button>
+            </div>
+          </div>
           <SheetDescription className="text-sm text-neutral-500">
             {[counterparty, phone, directionLabel, date]
               .filter(Boolean)
@@ -204,44 +232,7 @@ export function CallDetailSheet({
           <div className="flex flex-col gap-5">
             {canPlayAudio && (
               <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-800">
-                <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wide text-neutral-400">
-                      Аудиозапись
-                    </p>
-                    <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
-                      Прослушайте запись, перематывайте по таймлайну или
-                      скачайте файл.
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleStopAudio}
-                      className="gap-2"
-                    >
-                      <Square className="size-4" />
-                      Остановить
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      asChild
-                      className="gap-2"
-                    >
-                      <a href={audioMeta?.downloadUrl ?? "#"} download>
-                        <Download className="size-4" />
-                        Скачать
-                      </a>
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="[&_.rhap_container]:bg-transparent [&_.rhap_container]:p-0 [&_.rhap_container]:shadow-none [&_.rhap_current-time]:text-sm [&_.rhap_download-progress]:bg-neutral-200 dark:[&_.rhap_download-progress]:bg-neutral-700 [&_.rhap_main-controls-button]:text-foreground [&_.rhap_play-pause-button]:text-foreground [&_.rhap_progress-bar]:bg-neutral-200 dark:[&_.rhap_progress-bar]:bg-neutral-700 [&_.rhap_progress-filled]:bg-primary [&_.rhap_progress-indicator]:bg-primary [&_.rhap_time]:text-sm [&_.rhap_time]:text-neutral-500 dark:[&_.rhap_time]:text-neutral-400 [&_.rhap_volume-button]:text-foreground [&_.rhap_volume-indicator]:bg-primary [&_.rhap_volume-bar]:bg-neutral-200 dark:[&_.rhap_volume-bar]:bg-neutral-700">
+                <div className="[&_.rhap_container]:bg-transparent [&_.rhap_container]:p-0 [&_.rhap_container]:shadow-none [&_.rhap_current-time]:text-sm [&_.rhap_download-progress]:bg-neutral-200 dark:[&_.rhap_download-progress]:bg-neutral-600 [&_.rhap_main-controls-button]:text-neutral-700 dark:[&_.rhap_main-controls-button]:text-neutral-200 [&_.rhap_main-controls-button_svg]:fill-current [&_.rhap_play-pause-button]:text-neutral-700 dark:[&_.rhap_play-pause-button]:text-neutral-200 [&_.rhap_play-pause-button_svg]:fill-current [&_.rhap_progress-bar]:bg-neutral-200 dark:[&_.rhap_progress-bar]:bg-neutral-600 [&_.rhap_progress-filled]:bg-primary [&_.rhap_progress-indicator]:bg-primary [&_.rhap_time]:text-sm [&_.rhap_time]:text-neutral-500 dark:[&_.rhap_time]:text-neutral-400 [&_.rhap_volume-button]:text-neutral-700 dark:[&_.rhap_volume-button]:text-neutral-200 [&_.rhap_volume-button_svg]:fill-current [&_.rhap_volume-indicator]:bg-primary [&_.rhap_volume-bar]:bg-neutral-200 dark:[&_.rhap_volume-bar]:bg-neutral-600">
                   <AudioPlayer
                     ref={playerRef}
                     src={audioMeta?.url}
@@ -250,7 +241,6 @@ export function CallDetailSheet({
                     customAdditionalControls={[]}
                     customVolumeControls={[]}
                     layout="stacked-reverse"
-                    header={`Запись звонка #${record.id}`}
                   />
                 </div>
               </div>
@@ -347,5 +337,33 @@ export function CallDetailSheet({
         </div>
       </SheetContent>
     </Sheet>
+
+    <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Удалить запись?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Это действие необратимо. Запись и её аудиофайл будут удалены навсегда.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Отмена</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => {
+              deleteMutation.mutate(record.id, {
+                onSuccess: () => {
+                  setConfirmDeleteOpen(false);
+                  onClose();
+                },
+              });
+            }}
+          >
+            Удалить
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

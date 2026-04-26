@@ -3,15 +3,19 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   ArrowUpDown,
+  Info,
   Loader2,
   Plus,
   Search,
   UserPlus,
   Users,
+  Wand2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate, useOutletContext } from "react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { PageHeader } from "~/components/layout";
 import { Badge } from "~/components/ui/badge";
 import { Skeleton } from "~/components/ui/skeleton";
@@ -19,11 +23,14 @@ import { Button } from "~/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "~/components/ui/dialog";
 import { Field } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
+import { PasswordInput } from "~/components/ui/password-input";
 import { Pagination } from "~/components/ui/pagination";
 import {
   Table,
@@ -34,10 +41,99 @@ import {
   TableRow,
 } from "~/components/ui/table";
 import { usePagination } from "~/hooks/usePagination";
-import { useCreateUser, useUsers } from "~/hooks/useUsers";
-import { createUserSchema, type CreateUserSchema } from "~/schemas/user";
+import { useCreateUser, useUsers, USERS_KEY } from "~/hooks/useUsers";
+import { createUserSchema } from "~/schemas/user";
 import { cn } from "~/lib/utils";
 import type { User } from "~/types/auth";
+import { mangoApi, type MangoDirectoryCandidate } from "~/axios/mango";
+import { usersApi } from "~/axios/users";
+import { getApiErrorMessage } from "~/lib/api-error";
+
+const MANGO_CANDIDATES_KEY = ["mango", "users", "candidates"] as const;
+
+const createLocalUserSchema = z.object({
+  name: z.string().trim().min(2, { message: "Минимум 2 символа" }),
+  fio: z.string().trim().optional(),
+  email: z.string().trim().email({ message: "Некорректный email" }),
+});
+
+type CreateLocalUserFormValues = z.infer<typeof createLocalUserSchema>;
+
+function CreateLocalUserDialog({
+  open,
+  candidate,
+  onClose,
+  onSubmit,
+  isPending,
+}: {
+  open: boolean;
+  candidate: MangoDirectoryCandidate | null;
+  onClose: () => void;
+  onSubmit: (values: CreateLocalUserFormValues) => Promise<void>;
+  isPending: boolean;
+}) {
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<CreateLocalUserFormValues>({
+    resolver: zodResolver(createLocalUserSchema),
+    values: {
+      name: candidate?.createLocalUserDraft.name ?? "",
+      fio: candidate?.createLocalUserDraft.fio ?? "",
+      email: candidate?.createLocalUserDraft.email ?? "",
+    },
+  });
+
+  const handleClose = () => {
+    reset();
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && handleClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Создать пользователя из Mango</DialogTitle>
+          <DialogDescription>
+            {candidate
+              ? `Mango ID: ${candidate.mangoUserId}. Пароль по умолчанию: ${candidate.mangoUserId}.`
+              : "Создание пользователя"}
+          </DialogDescription>
+        </DialogHeader>
+
+        <form
+          onSubmit={handleSubmit(async (values) => {
+            await onSubmit(values);
+            handleClose();
+          })}
+          className="space-y-4"
+        >
+          <Field label="Имя" htmlFor="mc-name" error={errors.name?.message}>
+            <Input id="mc-name" {...register("name")} hasError={!!errors.name} />
+          </Field>
+          <Field label="ФИО" htmlFor="mc-fio" error={errors.fio?.message}>
+            <Input id="mc-fio" {...register("fio")} hasError={!!errors.fio} />
+          </Field>
+          <Field label="Email" htmlFor="mc-email" error={errors.email?.message}>
+            <Input id="mc-email" type="email" {...register("email")} hasError={!!errors.email} />
+          </Field>
+
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={handleClose}>
+              Отмена
+            </Button>
+            <Button type="submit" disabled={isPending} className="gap-2">
+              {isPending ? <Loader2 className="size-4 animate-spin" /> : <UserPlus className="size-4" />}
+              Создать
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 type SortField = "name" | "email";
 type SortDir = "asc" | "desc";
@@ -195,9 +291,8 @@ function AddUserDialog({
             htmlFor="password"
             error={errors.password?.message}
           >
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               placeholder="Минимум 6 символов"
               {...register("password")}
               hasError={!!errors.password}
@@ -235,6 +330,7 @@ function AddUserDialog({
 export default function UsersPage() {
   const { user: currentUser } = useOutletContext<{ user: User }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: allUsers = [], isPending } = useUsers();
   const users = allUsers.filter((user) => user.id !== currentUser.id);
 
@@ -244,6 +340,99 @@ export default function UsersPage() {
     dir: "asc",
   });
   const [addOpen, setAddOpen] = useState(false);
+  const [selectedCandidate, setSelectedCandidate] = useState<MangoDirectoryCandidate | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+
+  const { refetch: refetchCandidates } = useQuery({
+    queryKey: MANGO_CANDIDATES_KEY,
+    queryFn: () => mangoApi.getUsersCandidates(),
+    enabled: false,
+  });
+
+  const createLocalUserMutation = useMutation({
+    mutationFn: async ({ candidate, values }: { candidate: MangoDirectoryCandidate; values: CreateLocalUserFormValues }) => {
+      const draft = candidate.createLocalUserDraft;
+      return usersApi.createFromMango({
+        name: values.name.trim(),
+        fio: values.fio?.trim() || null,
+        email: values.email.trim(),
+        role: "manager",
+        mangoUserId: draft.mangoUserId,
+        mangoLogin: draft.mangoLogin ?? null,
+        mangoExtension: draft.mangoExtension ?? null,
+        mangoPosition: draft.mangoPosition ?? null,
+        mangoDepartment: draft.mangoDepartment ?? null,
+        mangoMobile: draft.mangoMobile ?? null,
+        mangoOutgoingLine: draft.mangoOutgoingLine ?? null,
+        mangoAccessRoleId: draft.mangoAccessRoleId ?? null,
+        mangoGroups: draft.mangoGroups ?? null,
+        mangoSips: draft.mangoSips ?? null,
+        mangoTelephonyNumbers: draft.mangoTelephonyNumbers ?? null,
+      });
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: USERS_KEY }),
+        queryClient.invalidateQueries({ queryKey: MANGO_CANDIDATES_KEY }),
+      ]);
+      toast.success("Пользователь создан. Пароль по умолчанию: Mango User ID");
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Не удалось создать пользователя из Mango"));
+    },
+  });
+
+  const bulkImportMutation = useMutation({
+    mutationFn: async () => {
+      const response = await mangoApi.getUsersCandidates();
+      const candidates = (response?.items ?? []).filter((c) => c.linkedUserId == null);
+      let created = 0, skipped = 0, failed = 0;
+
+      for (const candidate of candidates) {
+        const draft = candidate.createLocalUserDraft;
+        try {
+          await usersApi.createFromMango({
+            name: draft.name.trim(),
+            fio: draft.fio?.trim() || null,
+            email: draft.email.trim(),
+            role: "manager",
+            mangoUserId: draft.mangoUserId,
+            mangoLogin: draft.mangoLogin ?? null,
+            mangoExtension: draft.mangoExtension ?? null,
+            mangoPosition: draft.mangoPosition ?? null,
+            mangoDepartment: draft.mangoDepartment ?? null,
+            mangoMobile: draft.mangoMobile ?? null,
+            mangoOutgoingLine: draft.mangoOutgoingLine ?? null,
+            mangoAccessRoleId: draft.mangoAccessRoleId ?? null,
+            mangoGroups: draft.mangoGroups ?? null,
+            mangoSips: draft.mangoSips ?? null,
+            mangoTelephonyNumbers: draft.mangoTelephonyNumbers ?? null,
+          });
+          created++;
+        } catch (error) {
+          const msg = getApiErrorMessage(error, "").toLowerCase();
+          if (msg.includes("already in use") || msg.includes("уже используется") || msg.includes("уже существует")) {
+            skipped++;
+          } else {
+            failed++;
+          }
+        }
+      }
+
+      return { created, skipped, failed };
+    },
+    onSuccess: async (result) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: USERS_KEY }),
+        queryClient.invalidateQueries({ queryKey: MANGO_CANDIDATES_KEY }),
+      ]);
+      const summary = `Создано: ${result.created} · Пропущено: ${result.skipped} · Ошибок: ${result.failed}`;
+      result.failed > 0 ? toast.error(summary) : toast.success(summary);
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Не удалось импортировать пользователей из Mango"));
+    },
+  });
 
   const searchItems = useMemo<UserSearchItem[]>(
     () =>
@@ -316,14 +505,39 @@ export default function UsersPage() {
         title="Пользователи"
         description="Управление менеджерами платформы"
         actions={
-          <Button
-            onClick={() => setAddOpen(true)}
-            size="sm"
-            className="gap-1.5"
-          >
-            <Plus className="size-4" />
-            Добавить менеджера
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1">
+              <div className="group relative">
+                <Info className="size-4 cursor-default text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300" />
+                <div className="pointer-events-none absolute left-0 top-6 z-50 w-64 rounded-lg border border-neutral-200 bg-white p-3 text-xs text-neutral-600 opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+                  У импортированных пользователей пароль по умолчанию равен его Mango ID. Его нужно обязательно изменить.
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void bulkImportMutation.mutateAsync()}
+                disabled={bulkImportMutation.isPending}
+                className="gap-1.5"
+              >
+                {bulkImportMutation.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Wand2 className="size-4" />
+                )}
+                Импортировать из Mango
+              </Button>
+            </div>
+            <Button
+              onClick={() => setAddOpen(true)}
+              size="sm"
+              className="gap-1.5"
+            >
+              <Plus className="size-4" />
+              Добавить менеджера
+            </Button>
+          </div>
         }
       />
 
@@ -462,6 +676,20 @@ export default function UsersPage() {
       </div>
 
       <AddUserDialog open={addOpen} onClose={() => setAddOpen(false)} />
+
+      <CreateLocalUserDialog
+        open={createOpen}
+        candidate={selectedCandidate}
+        onClose={() => {
+          setCreateOpen(false);
+          setSelectedCandidate(null);
+        }}
+        onSubmit={async (values) => {
+          if (!selectedCandidate) return;
+          await createLocalUserMutation.mutateAsync({ candidate: selectedCandidate, values });
+        }}
+        isPending={createLocalUserMutation.isPending}
+      />
     </div>
   );
 }

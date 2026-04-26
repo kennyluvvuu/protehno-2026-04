@@ -101,3 +101,49 @@ html.dark {
 *:focus-visible {
     @apply outline-2 outline-offset-2 outline-[color:var(--color-brand-accent)];
 }
+
+/* react-h5-audio-player dark theme */
+.dark .rhap_container {
+    background-color: transparent;
+    box-shadow: none;
+}
+
+.dark .rhap_time {
+    color: var(--neutral-400, #9ca3af);
+}
+
+.dark .rhap_progress-bar {
+    background-color: #4b5563;
+}
+
+.dark .rhap_download-progress {
+    background-color: #4b5563;
+}
+
+.dark .rhap_progress-filled {
+    background-color: var(--color-primary, #3b82f6);
+}
+
+.dark .rhap_progress-indicator {
+    background-color: var(--color-primary, #3b82f6);
+}
+
+.dark .rhap_volume-bar {
+    background-color: #4b5563;
+}
+
+.dark .rhap_volume-indicator {
+    background-color: var(--color-primary, #3b82f6);
+}
+
+.dark .rhap_main-controls-button,
+.dark .rhap_play-pause-button,
+.dark .rhap_volume-button {
+    color: #e5e7eb;
+}
+
+.dark .rhap_main-controls-button svg,
+.dark .rhap_play-pause-button svg,
+.dark .rhap_volume-button svg {
+    fill: currentColor;
+}
