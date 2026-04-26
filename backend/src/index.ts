@@ -21,18 +21,7 @@ import { StatsService } from "./plugins/stats/service";
 async function bootstrapServer() {
     const db = getDbConnection(Bun.env.DATABASE_URL!);
     const userService = new UserService(db);
-    const storage =
-        Bun.env.STORAGE_DRIVER === "s3"
-            ? new S3Storage({
-                  endpoint: Bun.env.S3_ENDPOINT ?? "",
-                  region: Bun.env.S3_REGION ?? "us-east-1",
-                  bucket: Bun.env.S3_BUCKET ?? "",
-                  accessKeyId: Bun.env.S3_ACCESS_KEY_ID ?? "",
-                  secretAccessKey: Bun.env.S3_SECRET_ACCESS_KEY ?? "",
-                  forcePathStyle: Bun.env.S3_FORCE_PATH_STYLE !== "false",
-                  publicBaseUrl: Bun.env.S3_PUBLIC_BASE_URL,
-              })
-            : new LocalStorage("./uploads/");
+    const storage = new LocalStorage("./uploads/");
     const recordsService = new RecordService(db, storage);
     const aiService = new AIService();
     const statsService = new StatsService(db);
