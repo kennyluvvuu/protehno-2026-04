@@ -212,11 +212,98 @@ function formatDurationSec(sec: number | null): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, withYear = false): string {
   return new Date(iso).toLocaleDateString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
+    ...(withYear ? { year: "2-digit" } : {}),
   });
+}
+
+function startOfWeek(date: Date): Date {
+  const next = new Date(date);
+  const day = next.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  next.setDate(next.getDate() + diff);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function aggregateTrendData(
+  trend: Array<{
+    date: string;
+    total: number;
+    done: number;
+    failed: number;
+    missed: number;
+  }>,
+): Array<{
+  day: string;
+  total: number;
+  done: number;
+  failed: number;
+  missed: number;
+}> {
+  if (trend.length <= 180) {
+    const showYear = trend.length > 366;
+    return trend.map((t) => ({
+      day: formatDate(t.date, showYear),
+      total: t.total,
+      done: t.done,
+      failed: t.failed,
+      missed: t.missed,
+    }));
+  }
+
+  const buckets = new Map<
+    string,
+    {
+      date: Date;
+      total: number;
+      done: number;
+      failed: number;
+      missed: number;
+    }
+  >();
+
+  trend.forEach((t) => {
+    const bucketDate = startOfWeek(new Date(t.date));
+    const key = bucketDate.toISOString();
+
+    const current = buckets.get(key);
+    if (current) {
+      current.total += t.total;
+      current.done += t.done;
+      current.failed += t.failed;
+      current.missed += t.missed;
+      return;
+    }
+
+    buckets.set(key, {
+      date: bucketDate,
+      total: t.total,
+      done: t.done,
+      failed: t.failed,
+      missed: t.missed,
+    });
+  });
+
+  return Array.from(buckets.values())
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+    .map((item) => ({
+      day: formatDate(item.date.toISOString(), true),
+      total: item.total,
+      done: item.done,
+      failed: item.failed,
+      missed: item.missed,
+    }));
+}
+
+function getTrendTickInterval(length: number): number | "preserveStartEnd" {
+  if (length <= 14) return 0;
+  if (length <= 31) return 2;
+  if (length <= 90) return 6;
+  return Math.ceil(length / 10);
 }
 
 function AgentStatItem({
@@ -316,15 +403,18 @@ export default function UserDetailPage() {
   } = usePagination(userRecords);
 
   const trendData = useMemo(
-    () =>
-      (agentDashboard?.trend ?? []).map((t) => ({
-        day: formatDate(t.date),
-        total: t.total,
-        done: t.done,
-        failed: t.failed,
-        missed: t.missed,
-      })),
+    () => aggregateTrendData(agentDashboard?.trend ?? []),
     [agentDashboard],
+  );
+
+  const trendTickInterval = useMemo(
+    () => getTrendTickInterval(trendData.length),
+    [trendData.length],
+  );
+
+  const trendChartWidth = useMemo(
+    () => Math.max(640, trendData.length * 28),
+    [trendData.length],
   );
 
   const isLoading = usersLoading || recordsLoading;
@@ -694,53 +784,62 @@ export default function UserDetailPage() {
             <CardTitle className="text-sm font-medium">Тренд звонков</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={trendData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip
-                  contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                  formatter={(v: number, name: string) => [
-                    v,
-                    {
-                      total: "Всего",
-                      done: "Выполнено",
-                      failed: "Ошибки",
-                      missed: "Пропущено",
-                    }[name] ?? name,
-                  ]}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="total"
-                  stroke="#64748b"
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="done"
-                  stroke="#22c55e"
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="failed"
-                  stroke="#ef4444"
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="missed"
-                  stroke="#f97316"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            <div className="overflow-x-auto pb-2">
+              <div style={{ width: trendChartWidth }}>
+                <ResponsiveContainer width="100%" height={180}>
+                  <LineChart data={trendData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis
+                      dataKey="day"
+                      tick={{ fontSize: 11 }}
+                      interval={trendTickInterval}
+                      minTickGap={24}
+                    />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                      formatter={(v: number, name: string) => [
+                        v,
+                        {
+                          total: "Всего",
+                          done: "Выполнено",
+                          failed: "Ошибки",
+                          missed: "Пропущено",
+                        }[name] ?? name,
+                      ]}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="total"
+                      stroke="#64748b"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="done"
+                      stroke="#22c55e"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="failed"
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="missed"
+                      stroke="#f97316"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
             <div className="mt-2 flex flex-wrap gap-4 text-xs text-neutral-500">
               {[
                 { color: "#64748b", label: "Всего" },
