@@ -1,12 +1,8 @@
-{
-	auto_https off
-}
-
-http://api.localhost {
+{$CADDY_API_DOMAIN} {
 	reverse_proxy backend:3000
 }
 
-http://manager.localhost {
+{$CADDY_MANAGER_DOMAIN} {
 	handle_path /api/* {
 		reverse_proxy backend:3000
 	}
@@ -16,7 +12,7 @@ http://manager.localhost {
 	}
 }
 
-http://director.localhost {
+{$CADDY_DIRECTOR_DOMAIN} {
 	handle_path /api/* {
 		reverse_proxy backend:3000
 	}
@@ -26,7 +22,7 @@ http://director.localhost {
 	}
 }
 
-http://localhost {
+{$CADDY_LANDING_DOMAIN} {
 	header Content-Type "text/html; charset=utf-8"
 	respond <<HTML
 <!doctype html>
@@ -184,9 +180,9 @@ http://localhost {
     <h1>Connectio</h1>
     <p>Единая точка входа для рабочих интерфейсов. Выберите нужную панель и продолжайте работу без лишних переходов.</p>
     <div class="links">
-      <a class="primary" href="http://manager.localhost">Открыть manager</a>
-      <a class="primary" href="http://director.localhost">Открыть director</a>
-      <a class="secondary" href="http://api.localhost/health">Проверить API</a>
+      <a class="primary" href="https://{$CADDY_MANAGER_DOMAIN}">Открыть manager</a>
+      <a class="primary" href="https://{$CADDY_DIRECTOR_DOMAIN}">Открыть director</a>
+      <a class="secondary" href="https://{$CADDY_API_DOMAIN}/health">Проверить API</a>
     </div>
   </div>
 </body>
