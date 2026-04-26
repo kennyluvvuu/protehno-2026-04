@@ -11,7 +11,7 @@ const authPlugin = (userService: UserService) =>
             httpOnly: true,
             path: "/",
             sameSite: "lax",
-            secure: Bun.env.NODE_ENV === "production",
+            secure: false,
             maxAge: 60 * 60 * 24 * 7,
         },
     })
@@ -59,7 +59,7 @@ const authPlugin = (userService: UserService) =>
                 auth.httpOnly = true;
                 auth.path = "/";
                 auth.sameSite = "lax";
-                auth.secure = Bun.env.NODE_ENV === "production";
+                auth.secure = false;
                 auth.maxAge = 60 * 60 * 24 * 7;
 
                 authLog("login success", {

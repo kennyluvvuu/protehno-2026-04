@@ -1,3 +1,4 @@
+import Fuse from "fuse.js";
 import { useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
@@ -6,7 +7,6 @@ import {
   CalendarDays,
   Check,
   Filter,
-  Loader2,
   Mic,
   Search,
   X,
@@ -14,6 +14,7 @@ import {
 import { CallDetailSheet } from "~/components/calls/call-detail-sheet";
 import { PageHeader } from "~/components/layout";
 import { Badge } from "~/components/ui/badge";
+import { Skeleton } from "~/components/ui/skeleton";
 import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,
@@ -24,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import { Input } from "~/components/ui/input";
+import { Pagination } from "~/components/ui/pagination";
 import {
   Table,
   TableBody,
@@ -32,10 +34,17 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
+import { usePagination } from "~/hooks/usePagination";
 import { useRecords } from "~/hooks/useRecords";
 import { useUsers } from "~/hooks/useUsers";
 import { cn } from "~/lib/utils";
-import type { Record, RecordStatus, SortDir, SortField } from "~/types/record";
+import type {
+  DirectionKind,
+  Record,
+  RecordStatus,
+  SortDir,
+  SortField,
+} from "~/types/record";
 
 type StatusFilter = RecordStatus | "all";
 
@@ -46,13 +55,49 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "processing", label: "В обработке" },
   { value: "done", label: "Выполнено" },
   { value: "failed", label: "Ошибка" },
-  { value: "not_applicable", label: "Нет аудио" },
+];
+
+type SearchableRecord = Record & {
+  agentName: string;
+  searchText: string;
+};
+
+const FUSE_KEYS: { name: keyof SearchableRecord; weight: number }[] = [
+  { name: "title", weight: 0.28 },
+  { name: "callTo", weight: 0.2 },
+  { name: "agentName", weight: 0.16 },
+  { name: "summary", weight: 0.12 },
+  { name: "transcription", weight: 0.1 },
+  { name: "callerNumber", weight: 0.05 },
+  { name: "calleeNumber", weight: 0.05 },
+  { name: "directionKind", weight: 0.02 },
+  { name: "source", weight: 0.02 },
 ];
 
 function formatDuration(sec: number): string {
   const minutes = Math.floor(sec / 60);
   const seconds = sec % 60;
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function getDirectionLabel(directionKind?: DirectionKind | null): string {
+  if (directionKind === "inbound") return "Входящий";
+  if (directionKind === "outbound") return "Исходящий";
+  return "Неизвестно";
+}
+
+function getDisplayCounterparty(record: Record): string {
+  if (record.callTo) return record.callTo;
+
+  if (record.directionKind === "inbound") {
+    return record.callerNumber ?? record.calleeNumber ?? "—";
+  }
+
+  if (record.directionKind === "outbound") {
+    return record.calleeNumber ?? record.callerNumber ?? "—";
+  }
+
+  return record.callerNumber ?? record.calleeNumber ?? "—";
 }
 
 function formatShortDate(iso: string): string {
@@ -88,21 +133,29 @@ function getDisplayAgentName(
 }
 
 function buildSearchText(record: Record, agentName: string): string {
+  const directionKind = record.directionKind ?? record.direction ?? "unknown";
+  const normalizedDirectionKind =
+    directionKind === "inbound" ||
+    directionKind === "outbound" ||
+    directionKind === "unknown"
+      ? directionKind
+      : "unknown";
+
   return [
     getDisplayTitle(record),
-    record.callTo,
+    getDisplayCounterparty(record),
     record.summary,
     record.transcription,
     record.callerNumber,
     record.calleeNumber,
-    record.direction,
+    normalizedDirectionKind,
+    getDirectionLabel(normalizedDirectionKind),
     record.source,
     record.tags.join(" "),
     agentName,
   ]
     .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
+    .join(" ");
 }
 
 function matchesDate(
@@ -186,7 +239,7 @@ function StatusBadge({ status }: { status: RecordStatus }) {
 }
 
 export default function Calls() {
-  const { data: records = [], isLoading } = useRecords();
+  const { data: records = [], isPending } = useRecords();
   const { data: users = [] } = useUsers();
 
   const [search, setSearch] = useState("");
@@ -205,19 +258,47 @@ export default function Calls() {
     [users],
   );
 
-  const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
+  const searchableRecords = useMemo<SearchableRecord[]>(
+    () =>
+      records.map((record) => {
+        const agentName = getDisplayAgentName(record, userMap);
+        return {
+          ...record,
+          agentName,
+          searchText: buildSearchText(record, agentName),
+        };
+      }),
+    [records, userMap],
+  );
 
-    let list = records.filter((record) => {
-      const agentName = getDisplayAgentName(record, userMap);
-      const matchSearch =
-        !query || buildSearchText(record, agentName).includes(query);
+  const fuse = useMemo(
+    () =>
+      new Fuse(searchableRecords, {
+        keys: FUSE_KEYS,
+        threshold: 0.38,
+        minMatchCharLength: 2,
+        ignoreLocation: true,
+      }),
+    [searchableRecords],
+  );
+
+  const filtered = useMemo(() => {
+    const query = search.trim();
+
+    let list = searchableRecords.filter((record) => {
       const matchStatus =
         statusFilter === "all" || record.status === statusFilter;
       const matchDate = matchesDate(getRecordDate(record), dateFrom, dateTo);
 
-      return matchSearch && matchStatus && matchDate;
+      return matchStatus && matchDate;
     });
+
+    if (query.length >= 2) {
+      const matchedIds = new Set(
+        fuse.search(query).map((result) => result.item.id),
+      );
+      list = list.filter((record) => matchedIds.has(record.id));
+    }
 
     list = [...list].sort((a, b) => {
       const dir = sortDir === "asc" ? 1 : -1;
@@ -227,7 +308,13 @@ export default function Calls() {
       }
 
       if (sortField === "callTo") {
-        return dir * (a.callTo ?? "").localeCompare(b.callTo ?? "", "ru");
+        return (
+          dir *
+          getDisplayCounterparty(a).localeCompare(
+            getDisplayCounterparty(b),
+            "ru",
+          )
+        );
       }
 
       if (sortField === "durationSec") {
@@ -243,15 +330,17 @@ export default function Calls() {
 
     return list;
   }, [
-    records,
+    searchableRecords,
     search,
     sortField,
     sortDir,
     statusFilter,
     dateFrom,
     dateTo,
-    userMap,
+    fuse,
   ]);
+
+  const { page, totalPages, pageItems, setPage } = usePagination(filtered);
 
   const isDateActive = dateFrom !== "" || dateTo !== "";
 
@@ -432,12 +521,29 @@ export default function Calls() {
           </TableHeader>
 
           <TableBody>
-            {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={6} className="py-16 text-center">
-                  <Loader2 className="mx-auto size-6 animate-spin text-neutral-400" />
-                </TableCell>
-              </TableRow>
+            {isPending ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell>
+                    <Skeleton className="h-4 w-40" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-28" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-16" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-20" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-16" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                  </TableCell>
+                </TableRow>
+              ))
             ) : filtered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-16 text-center">
@@ -455,7 +561,7 @@ export default function Calls() {
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((record) => {
+              pageItems.map((record) => {
                 const recordDate = getRecordDate(record);
                 const agentName = getDisplayAgentName(record, userMap);
                 const displayDuration = getDisplayDuration(record);
@@ -470,7 +576,12 @@ export default function Calls() {
                       {getDisplayTitle(record)}
                     </TableCell>
                     <TableCell className="text-neutral-600 dark:text-neutral-400">
-                      {record.callTo ?? "—"}
+                      <div className="flex flex-col gap-1">
+                        <span>{getDisplayCounterparty(record)}</span>
+                        <span className="text-xs text-neutral-400">
+                          {getDirectionLabel(record.directionKind ?? null)}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-neutral-600 dark:text-neutral-400">
                       {agentName}
@@ -496,9 +607,16 @@ export default function Calls() {
         </Table>
       </div>
 
-      <p className="mt-2 text-xs text-neutral-400">
-        {filtered.length} из {records.length} записей
-      </p>
+      <div className="mt-3 flex items-center justify-between">
+        <p className="text-xs text-neutral-400">
+          {filtered.length} из {records.length} записей
+        </p>
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+        />
+      </div>
 
       <CallDetailSheet
         record={selected}

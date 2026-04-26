@@ -1,18 +1,27 @@
-import { api } from "~/lib/axios-client"
-import type { LoginCredentials, User } from "~/types/auth"
+import { api } from "~/lib/axios-client";
+import { assertRequestCooldown } from "~/lib/request-guard";
+import type { LoginCredentials, User } from "~/types/auth";
 
 export const authApi = {
-    login: async (credentials: LoginCredentials): Promise<User> => {
-        const { data } = await api.post<User>("/login", credentials)
-        return data
-    },
-    logout: async (): Promise<void> => {
-        await api.post("/logout")
-    },
-    me: async (cookie?: string): Promise<User> => {
-        const { data } = await api.get<User>("/users/me", {
-            headers: cookie ? { cookie } : undefined,
-        })
-        return data
-    },
-}
+  login: async (credentials: LoginCredentials): Promise<User> => {
+    assertRequestCooldown("auth:login", 1000);
+    const { data } = await api.post<User>("/login", credentials, {
+      withCredentials: true,
+    });
+    return data;
+  },
+
+  logout: async (): Promise<void> => {
+    await api.post("/logout", undefined, {
+      withCredentials: true,
+    });
+  },
+
+  me: async (cookie?: string): Promise<User> => {
+    const { data } = await api.get<User>("/users/me", {
+      withCredentials: true,
+      headers: cookie ? { cookie } : undefined,
+    });
+    return data;
+  },
+};

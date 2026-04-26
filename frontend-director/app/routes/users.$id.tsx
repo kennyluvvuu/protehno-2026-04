@@ -2,6 +2,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   ArrowLeft,
   FileAudio,
+  KeyRound,
   Loader2,
   Mail,
   Phone,
@@ -11,6 +12,8 @@ import {
   UserCog,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Pagination } from "~/components/ui/pagination";
+import { usePagination } from "~/hooks/usePagination";
 import { useForm } from "react-hook-form";
 import { useNavigate, useParams } from "react-router";
 import { z } from "zod";
@@ -26,8 +29,17 @@ import {
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
 import { Badge } from "~/components/ui/badge";
+import { Skeleton } from "~/components/ui/skeleton";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/ui/dialog";
 import { Field } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import {
@@ -38,8 +50,10 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
+import { usersApi } from "~/axios/users";
 import { useRecords } from "~/hooks/useRecords";
 import { useDeleteUser, useUpdateUser, useUsers } from "~/hooks/useUsers";
+import { getApiErrorMessage } from "~/lib/api-error";
 import { cn } from "~/lib/utils";
 import type { User } from "~/types/auth";
 import type { Record, RecordStatus } from "~/types/record";
@@ -58,7 +72,12 @@ const editUserSchema = z.object({
   role: z.enum(["director", "manager"]),
 });
 
+const resetPasswordSchema = z.object({
+  password: z.string().min(6, { message: "Минимум 6 символов" }),
+});
+
 type EditUserFormValues = z.infer<typeof editUserSchema>;
+type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>;
 
 function StatusBadge({ status }: { status: RecordStatus }) {
   if (status === "done") {
@@ -161,6 +180,11 @@ export default function UserDetailPage() {
   const navigate = useNavigate();
   const [selected, setSelected] = useState<Record | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [resetPasswordError, setResetPasswordError] = useState<string | null>(
+    null,
+  );
 
   const { data: users = [], isLoading: usersLoading } = useUsers();
   const { data: records = [], isLoading: recordsLoading } = useRecords();
@@ -186,6 +210,21 @@ export default function UserDetailPage() {
     },
   });
 
+  const {
+    register: registerResetPassword,
+    handleSubmit: handleResetPasswordSubmit,
+    reset: resetResetPasswordForm,
+    formState: {
+      errors: resetPasswordErrors,
+      isSubmitting: isResetPasswordSubmitting,
+    },
+  } = useForm<ResetPasswordFormValues>({
+    resolver: zodResolver(resetPasswordSchema),
+    defaultValues: {
+      password: "",
+    },
+  });
+
   useEffect(() => {
     if (user) {
       reset(toFormValues(user));
@@ -196,6 +235,13 @@ export default function UserDetailPage() {
     () => records.filter((record) => record.userId === userId),
     [records, userId],
   );
+
+  const {
+    page: recordsPage,
+    totalPages: recordsTotalPages,
+    pageItems: recordsPageItems,
+    setPage: setRecordsPage,
+  } = usePagination(userRecords);
 
   const doneCount = userRecords.filter(
     (record) => record.status === "done",
@@ -219,8 +265,24 @@ export default function UserDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-32">
-        <Loader2 className="size-6 animate-spin text-neutral-400" />
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-3 mb-2">
+          <Skeleton className="size-9 rounded-md" />
+          <Skeleton className="size-11 rounded-full" />
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-4 w-28" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <Skeleton className="h-48 rounded-xl" />
+          <Skeleton className="h-48 rounded-xl lg:col-span-2" />
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Skeleton className="h-72 rounded-xl" />
+          <Skeleton className="h-72 rounded-xl" />
+        </div>
+        <Skeleton className="h-64 rounded-xl" />
       </div>
     );
   }
@@ -257,6 +319,24 @@ export default function UserDetailPage() {
     await deleteUser.mutateAsync({ id: user.id });
     setDeleteOpen(false);
     navigate("/users", { replace: true });
+  };
+
+  const onResetPassword = async (
+    values: ResetPasswordFormValues,
+  ): Promise<void> => {
+    try {
+      setResetPasswordError(null);
+      setIsResettingPassword(true);
+      await usersApi.resetPassword(user.id, values.password);
+      resetResetPasswordForm();
+      setResetPasswordOpen(false);
+    } catch (error) {
+      setResetPasswordError(
+        getApiErrorMessage(error, "Не удалось обновить пароль"),
+      );
+    } finally {
+      setIsResettingPassword(false);
+    }
   };
 
   return (
@@ -401,14 +481,29 @@ export default function UserDetailPage() {
               </Field>
 
               <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => reset(toFormValues(user))}
-                  disabled={!isDirty || isSubmitting || updateUser.isPending}
-                >
-                  Сбросить
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setResetPasswordError(null);
+                      resetResetPasswordForm();
+                      setResetPasswordOpen(true);
+                    }}
+                  >
+                    <KeyRound className="size-4" />
+                    Сменить пароль
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => reset(toFormValues(user))}
+                    disabled={!isDirty || isSubmitting || updateUser.isPending}
+                  >
+                    Сбросить
+                  </Button>
+                </div>
 
                 <Button
                   type="submit"
@@ -427,48 +522,28 @@ export default function UserDetailPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">
-              Опасные действия
+            <CardTitle className="text-sm font-medium text-red-700 dark:text-red-400">
+              Опасная зона
             </CardTitle>
           </CardHeader>
 
-          <CardContent className="flex flex-col gap-4">
-            <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-700">
-              <p className="text-sm font-medium">Удаление пользователя</p>
-              <p className="mt-1 text-xs text-neutral-500">
-                Backend не даст удалить самого себя или последнего директора.
-                Записи пользователя сохранятся, а `userId` у них станет `null`.
-              </p>
-
-              <Button
-                type="button"
-                variant="outline"
-                className="mt-4 gap-2 text-red-600 hover:text-red-700"
-                onClick={() => setDeleteOpen(true)}
-                disabled={deleteUser.isPending}
-              >
-                {deleteUser.isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Trash2 className="size-4" />
-                )}
-                Удалить пользователя
-              </Button>
-            </div>
-
-            <div className="rounded-lg border border-neutral-200 p-4 text-xs text-neutral-500 dark:border-neutral-700">
-              <p>
-                Привязка `Mango User ID` в форме выше использует backend
-                endpoint обновления пользователя и позволяет:
-              </p>
-              <ul className="mt-2 list-disc space-y-1 pl-4">
-                <li>назначать Mango ID менеджеру</li>
-                <li>изменять привязку</li>
-                <li>снимать привязку, если очистить поле</li>
-              </ul>
-            </div>
+          <CardContent>
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2 border-red-200 bg-white text-red-700 hover:border-red-300 hover:bg-red-100 hover:text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-400 dark:hover:border-red-700 dark:hover:bg-red-950/60 dark:hover:text-red-300"
+              onClick={() => setDeleteOpen(true)}
+              disabled={deleteUser.isPending}
+            >
+              {deleteUser.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Trash2 className="size-4" />
+              )}
+              Удалить менеджера
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -496,7 +571,30 @@ export default function UserDetailPage() {
             </TableHeader>
 
             <TableBody>
-              {userRecords.length === 0 ? (
+              {recordsLoading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell>
+                      <Skeleton className="h-4 w-36" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-24" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-16" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-12" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-10" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-5 w-20 rounded-full" />
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : userRecords.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="py-14 text-center">
                     <div className="flex flex-col items-center gap-2">
@@ -506,7 +604,7 @@ export default function UserDetailPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                userRecords.map((record) => {
+                recordsPageItems.map((record) => {
                   const displayDuration = getDisplayDuration(record);
 
                   return (
@@ -519,7 +617,18 @@ export default function UserDetailPage() {
                         {record.title ?? `Звонок #${record.id}`}
                       </TableCell>
                       <TableCell className="text-neutral-500">
-                        {record.callTo ?? "—"}
+                        {record.callTo ??
+                          (record.directionKind === "inbound"
+                            ? (record.callerNumber ??
+                              record.calleeNumber ??
+                              "—")
+                            : record.directionKind === "outbound"
+                              ? (record.calleeNumber ??
+                                record.callerNumber ??
+                                "—")
+                              : (record.callerNumber ??
+                                record.calleeNumber ??
+                                "—"))}
                       </TableCell>
                       <TableCell className="text-sm text-neutral-500">
                         {formatRecordDate(record)}
@@ -546,9 +655,16 @@ export default function UserDetailPage() {
           </Table>
         </div>
 
-        <p className="mt-2 text-xs text-neutral-400">
-          {userRecords.length} записей
-        </p>
+        <div className="mt-3 flex items-center justify-between">
+          <p className="text-xs text-neutral-400">
+            {userRecords.length} записей
+          </p>
+          <Pagination
+            page={recordsPage}
+            totalPages={recordsTotalPages}
+            onPageChange={setRecordsPage}
+          />
+        </div>
       </div>
 
       <CallDetailSheet
@@ -557,6 +673,76 @@ export default function UserDetailPage() {
         onClose={() => setSelected(null)}
         agentName={displayName}
       />
+
+      <Dialog
+        open={resetPasswordOpen}
+        onOpenChange={(open) => {
+          setResetPasswordOpen(open);
+          if (!open) {
+            setResetPasswordError(null);
+            resetResetPasswordForm();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Смена пароля</DialogTitle>
+            <DialogDescription>
+              Задайте новый пароль для пользователя {displayName}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            onSubmit={handleResetPasswordSubmit(onResetPassword)}
+            className="space-y-4"
+          >
+            <Field
+              label="Новый пароль"
+              htmlFor="reset-password"
+              error={resetPasswordErrors.password?.message}
+            >
+              <Input
+                id="reset-password"
+                type="password"
+                placeholder="Минимум 6 символов"
+                hasError={!!resetPasswordErrors.password}
+                {...registerResetPassword("password")}
+              />
+            </Field>
+
+            {resetPasswordError && (
+              <p className="text-sm text-red-600">{resetPasswordError}</p>
+            )}
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setResetPasswordOpen(false);
+                  setResetPasswordError(null);
+                  resetResetPasswordForm();
+                }}
+                disabled={isResettingPassword || isResetPasswordSubmitting}
+              >
+                Отмена
+              </Button>
+              <Button
+                type="submit"
+                disabled={isResettingPassword || isResetPasswordSubmitting}
+                className="gap-2"
+              >
+                {isResettingPassword || isResetPasswordSubmitting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <KeyRound className="size-4" />
+                )}
+                Сохранить новый пароль
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
@@ -575,7 +761,7 @@ export default function UserDetailPage() {
             <AlertDialogAction
               onClick={handleDelete}
               disabled={deleteUser.isPending}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+              className="bg-red-700/90 hover:bg-red-700 focus:ring-red-700"
             >
               {deleteUser.isPending ? (
                 <Loader2 className="size-4 animate-spin" />

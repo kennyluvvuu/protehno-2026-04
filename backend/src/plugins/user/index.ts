@@ -1,9 +1,21 @@
 import Elysia, { NotFoundError } from "elysia";
-import { createUserSchema, updateUserByDirectorSchema } from "./schema";
+import {
+    createMangoLocalUserSchema,
+    createUserSchema,
+    resetUserPasswordSchema,
+    updateUserByDirectorSchema,
+} from "./schema";
 import UserService from "./service";
 import z from "zod";
 import { guardPlugin, type UserRole } from "../guard";
 import RecordService from "../records/service";
+
+// Director-only routes in this plugin:
+// - POST /users/mango/create-local-user
+//   Supports creating a local user from Mango data.
+//   Password may be omitted if backend schema/service allow deferred setup.
+// - PATCH /users/:id/reset-password
+//   Used by a director to set or change another user's password.
 
 const userLog = (...args: unknown[]) => console.log("[user]", ...args);
 
@@ -60,6 +72,51 @@ export const userPlugin = (
             },
         )
         .use(guardPlugin(userService))
+        .post(
+            "/mango/create-local-user",
+            async ({
+                userService,
+                body,
+                request,
+                userId,
+                userRole,
+                set,
+            }: {
+                userService: UserService;
+                body: z.infer<typeof createMangoLocalUserSchema>;
+                request: Request;
+            } & ProtectedUserContext) => {
+                if (!assertDirector(userRole)) {
+                    set.status = 403;
+                    return { message: "Forbidden" };
+                }
+
+                userLog("create local user from mango", {
+                    method: request.method,
+                    path: new URL(request.url).pathname,
+                    actorUserId: userId,
+                    mangoUserId: body.mangoUserId,
+                    email: body.email,
+                });
+
+                const createdUser =
+                    await userService.createUserByDirector(body);
+
+                const linkedCount =
+                    await recordService.assignUnownedMangoRecordsToUser(
+                        body.mangoUserId,
+                        createdUser.id,
+                    );
+
+                return {
+                    ...createdUser,
+                    linkedCount,
+                };
+            },
+            {
+                body: createMangoLocalUserSchema,
+            },
+        )
         .get(
             "/",
             async (context: { userService: UserService; request: Request }) => {
@@ -183,6 +240,46 @@ export const userPlugin = (
                         body.mangoUserId === undefined
                             ? undefined
                             : body.mangoUserId,
+                    mangoLogin:
+                        body.mangoLogin === undefined
+                            ? undefined
+                            : body.mangoLogin,
+                    mangoExtension:
+                        body.mangoExtension === undefined
+                            ? undefined
+                            : body.mangoExtension,
+                    mangoPosition:
+                        body.mangoPosition === undefined
+                            ? undefined
+                            : body.mangoPosition,
+                    mangoDepartment:
+                        body.mangoDepartment === undefined
+                            ? undefined
+                            : body.mangoDepartment,
+                    mangoMobile:
+                        body.mangoMobile === undefined
+                            ? undefined
+                            : body.mangoMobile,
+                    mangoOutgoingLine:
+                        body.mangoOutgoingLine === undefined
+                            ? undefined
+                            : body.mangoOutgoingLine,
+                    mangoAccessRoleId:
+                        body.mangoAccessRoleId === undefined
+                            ? undefined
+                            : body.mangoAccessRoleId,
+                    mangoGroups:
+                        body.mangoGroups === undefined
+                            ? undefined
+                            : body.mangoGroups,
+                    mangoSips:
+                        body.mangoSips === undefined
+                            ? undefined
+                            : body.mangoSips,
+                    mangoTelephonyNumbers:
+                        body.mangoTelephonyNumbers === undefined
+                            ? undefined
+                            : body.mangoTelephonyNumbers,
                     role: body.role,
                 });
 
@@ -323,5 +420,47 @@ export const userPlugin = (
                 params: z.object({
                     mangoUserId: z.coerce.number().int().positive(),
                 }),
+            },
+        )
+        .patch(
+            "/:id/reset-password",
+            async ({
+                userService,
+                params: { id },
+                body,
+                request,
+                userId,
+                userRole,
+                set,
+            }: {
+                userService: UserService;
+                params: { id: number };
+                body: z.infer<typeof resetUserPasswordSchema>;
+                request: Request;
+            } & ProtectedUserContext) => {
+                if (!assertDirector(userRole)) {
+                    set.status = 403;
+                    return { message: "Forbidden" };
+                }
+
+                userLog("reset user password by director", {
+                    method: request.method,
+                    path: new URL(request.url).pathname,
+                    actorUserId: userId,
+                    targetUserId: id,
+                });
+
+                const existingUser = await userService.getUserById(id);
+
+                if (!existingUser) {
+                    userLog("user not found for password reset", { id });
+                    throw new NotFoundError("User not found");
+                }
+
+                return await userService.resetUserPassword(id, body);
+            },
+            {
+                params: userParamsSchema,
+                body: resetUserPasswordSchema,
             },
         );

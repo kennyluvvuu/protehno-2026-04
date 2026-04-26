@@ -1,7 +1,15 @@
-import { BarChart2, List, LogOut, Settings, Users } from "lucide-react";
+import {
+  BarChart2,
+  List,
+  LogOut,
+  Settings,
+  Users,
+  PhoneCall,
+} from "lucide-react";
 import { NavLink, useNavigate, useRevalidator } from "react-router";
 import { toast } from "sonner";
 import { authApi } from "~/axios/auth";
+import { getApiErrorMessage } from "~/lib/api-error";
 import { cn } from "~/lib/utils";
 import { useAuthStore } from "~/stores/useAuthStore";
 import type { User } from "~/types/auth";
@@ -44,8 +52,8 @@ export function Sidebar({
       toast.success("Вы вышли из системы");
       await revalidate();
       navigate("/login", { replace: true });
-    } catch {
-      toast.error("Не удалось выйти");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Не удалось выйти"));
     }
   };
 
@@ -68,7 +76,19 @@ export function Sidebar({
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5">
-        {nav.map(({ to, label, icon: Icon, end }) => (
+        {[
+          ...nav,
+          ...(user.role === "director"
+            ? [
+                {
+                  to: "/mango",
+                  label: "Mango Office",
+                  icon: PhoneCall,
+                  end: false,
+                },
+              ]
+            : []),
+        ].map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}
@@ -97,17 +117,25 @@ export function Sidebar({
             isCollapsed ? "justify-center gap-1" : "gap-2",
           )}
         >
-          <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs font-semibold text-white dark:bg-neutral-700">
+          <button
+            type="button"
+            onClick={() => navigate("/settings")}
+            className="flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs font-semibold text-white transition-opacity hover:opacity-80 dark:bg-neutral-700"
+          >
             {displayName.charAt(0).toUpperCase()}
-          </div>
+          </button>
 
           {!isCollapsed && (
-            <div className="min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={() => navigate("/settings")}
+              className="min-w-0 flex-1 text-left transition-opacity hover:opacity-70"
+            >
               <p className="truncate text-xs font-medium">{displayName}</p>
               <p className="truncate text-[10px] text-neutral-400">
                 {roleLabel}
               </p>
-            </div>
+            </button>
           )}
 
           <button

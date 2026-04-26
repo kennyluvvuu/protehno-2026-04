@@ -5,6 +5,7 @@ import {
   type UploadRecordPayload,
   type UploadRecordResponse,
 } from "~/axios/records";
+import { getApiErrorMessage } from "~/lib/api-error";
 import type { Record } from "~/types/record";
 
 export const RECORDS_ADMIN_FEED_KEY = ["records", "admin-feed"] as const;
@@ -47,8 +48,8 @@ export function useUploadRecord() {
 
       toast.success("Запись загружена и поставлена в обработку");
     },
-    onError: () => {
-      toast.error("Не удалось загрузить запись");
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Не удалось загрузить запись"));
     },
   });
 }

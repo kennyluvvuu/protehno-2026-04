@@ -41,6 +41,7 @@ import { PageHeader } from "~/components/layout";
 import { ManagersModal } from "~/components/users/managers-modal";
 import { Badge } from "~/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import { Skeleton } from "~/components/ui/skeleton";
 import type { User } from "~/types/auth";
 
 function StatCard({
@@ -109,11 +110,10 @@ export default function Dashboard() {
     refetchInterval: 30_000,
   });
 
-  const { data: overview } = useStatsOverview(analyticsPeriod);
-
-  const { data: weekly = [] } = useStatsWeekly(analyticsPeriod);
-
-  const { data: byAgent = [] } = useStatsByAgent(analyticsPeriod);
+  const { data: overview, isPending: overviewPending } = useStatsOverview(analyticsPeriod);
+  const { data: weekly = [], isPending: weeklyPending } = useStatsWeekly(analyticsPeriod);
+  const { data: byAgent = [], isPending: agentPending } = useStatsByAgent(analyticsPeriod);
+  const statsPending = overviewPending || weeklyPending || agentPending;
 
   const totalCalls = overview?.totalRecords ?? 0;
   const doneCalls = overview?.doneRecords ?? 0;
@@ -203,36 +203,55 @@ export default function Dashboard() {
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard
-          title="Всего записей"
-          value={totalCalls}
-          sub="по backend stats"
-          icon={FileAudio}
-        />
-        <StatCard
-          title="Выполнено"
-          value={doneCalls}
-          sub={`${successRate}% от всех`}
-          icon={TrendingUp}
-        />
-        <StatCard
-          title="Средний балл"
-          value={formatPercent(avgQualityScore)}
-          sub="quality score"
-          icon={Activity}
-        />
-        <button
-          type="button"
-          onClick={() => setManagersOpen(true)}
-          className="text-left"
-        >
-          <StatCard
-            title="Менеджеров"
-            value={totalManagers}
-            sub="нажмите для просмотра"
-            icon={Users}
-          />
-        </button>
+        {statsPending ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="pt-5">
+                <div className="flex items-start justify-between">
+                  <div className="flex flex-col gap-2">
+                    <Skeleton className="h-3 w-24" />
+                    <Skeleton className="h-7 w-16" />
+                    <Skeleton className="h-3 w-20" />
+                  </div>
+                  <Skeleton className="size-9 rounded-lg" />
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        ) : (
+          <>
+            <StatCard
+              title="Всего записей"
+              value={totalCalls}
+              sub="по backend stats"
+              icon={FileAudio}
+            />
+            <StatCard
+              title="Выполнено"
+              value={doneCalls}
+              sub={`${successRate}% от всех`}
+              icon={TrendingUp}
+            />
+            <StatCard
+              title="Средний балл"
+              value={formatPercent(avgQualityScore)}
+              sub="quality score"
+              icon={Activity}
+            />
+            <button
+              type="button"
+              onClick={() => setManagersOpen(true)}
+              className="text-left"
+            >
+              <StatCard
+                title="Менеджеров"
+                value={totalManagers}
+                sub="нажмите для просмотра"
+                icon={Users}
+              />
+            </button>
+          </>
+        )}
       </div>
 
       <ManagersModal
@@ -242,139 +261,173 @@ export default function Dashboard() {
       />
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Аналитика звонков
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={weeklyChartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip
-                  contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                  formatter={(v: number, name: string) => [
-                    v,
-                    name === "calls" ? "Всего" : "Успешных",
-                  ]}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="calls"
-                  stroke="#64748b"
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="success"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-            <div className="mt-2 flex gap-4 text-xs text-neutral-500">
-              <span className="flex items-center gap-1">
-                <span className="inline-block size-2 rounded-full bg-neutral-500" />
-                Всего
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="inline-block size-2 rounded-full bg-blue-500" />
-                Успешных
-              </span>
-            </div>
-          </CardContent>
-        </Card>
+        {statsPending ? (
+          <>
+            <Card className="lg:col-span-2">
+              <CardHeader className="pb-2">
+                <Skeleton className="h-4 w-36" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-[200px] w-full rounded-lg" />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <Skeleton className="h-4 w-28" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-[160px] w-full rounded-lg" />
+              </CardContent>
+            </Card>
+          </>
+        ) : (
+          <>
+            <Card className="lg:col-span-2">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Аналитика звонков
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={weeklyChartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                      formatter={(v: number, name: string) => [
+                        v,
+                        name === "calls" ? "Всего" : "Успешных",
+                      ]}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="calls"
+                      stroke="#64748b"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="success"
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+                <div className="mt-2 flex gap-4 text-xs text-neutral-500">
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block size-2 rounded-full bg-neutral-500" />
+                    Всего
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block size-2 rounded-full bg-blue-500" />
+                    Успешных
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Статус обработки
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center">
-            <ResponsiveContainer width="100%" height={160}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={45}
-                  outerRadius={70}
-                  dataKey="value"
-                  paddingAngle={3}
-                >
-                  {pieData.map((entry) => (
-                    <Cell key={entry.name} fill={entry.fill} />
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Статус обработки
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col items-center">
+                <ResponsiveContainer width="100%" height={160}>
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={45}
+                      outerRadius={70}
+                      dataKey="value"
+                      paddingAngle={3}
+                    >
+                      {pieData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="mt-2 flex flex-col gap-1 self-start text-xs text-neutral-600">
+                  {pieData.map((d) => (
+                    <span key={d.name} className="flex items-center gap-1.5">
+                      <span
+                        className="inline-block size-2 rounded-full"
+                        style={{ background: d.fill }}
+                      />
+                      {d.name}: {d.value}
+                    </span>
                   ))}
-                </Pie>
-                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="mt-2 flex flex-col gap-1 self-start text-xs text-neutral-600">
-              {pieData.map((d) => (
-                <span key={d.name} className="flex items-center gap-1.5">
-                  <span
-                    className="inline-block size-2 rounded-full"
-                    style={{ background: d.fill }}
-                  />
-                  {d.name}: {d.value}
-                </span>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
 
       <div className="mt-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Статистика по агентам
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={agentChartData} layout="vertical" barSize={16}>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="#f0f0f0"
-                  horizontal={false}
-                />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis
-                  dataKey="name"
-                  type="category"
-                  tick={{ fontSize: 11 }}
-                  width={120}
-                />
-                <Tooltip
-                  contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                  formatter={(v: number, name: string) => [
-                    v,
-                    name === "calls" ? "Звонков" : "Ср. балл",
-                  ]}
-                />
-                <Bar
-                  dataKey="calls"
-                  name="Звонков"
-                  fill="#64748b"
-                  radius={[0, 4, 4, 0]}
-                />
-                <Bar
-                  dataKey="avgScore"
-                  name="Ср. балл"
-                  fill="#3b82f6"
-                  radius={[0, 4, 4, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        {statsPending ? (
+          <Card>
+            <CardHeader className="pb-2">
+              <Skeleton className="h-4 w-40" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-[180px] w-full rounded-lg" />
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">
+                Статистика по агентам
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={agentChartData} layout="vertical" barSize={16}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#f0f0f0"
+                    horizontal={false}
+                  />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    tick={{ fontSize: 11 }}
+                    width={120}
+                  />
+                  <Tooltip
+                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                    formatter={(v: number, name: string) => [
+                      v,
+                      name === "calls" ? "Звонков" : "Ср. балл",
+                    ]}
+                  />
+                  <Bar
+                    dataKey="calls"
+                    name="Звонков"
+                    fill="#64748b"
+                    radius={[0, 4, 4, 0]}
+                  />
+                  <Bar
+                    dataKey="avgScore"
+                    name="Ср. балл"
+                    fill="#3b82f6"
+                    radius={[0, 4, 4, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
