@@ -94,7 +94,6 @@ export default function Dashboard() {
       <PageHeader
         title={`Добро пожаловать, ${user.fio ?? user.name}`}
         description="Обзор ваших звонков"
-        healthStatus={health?.status}
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

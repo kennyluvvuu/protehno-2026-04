@@ -353,7 +353,6 @@ export default function Calls() {
       <PageHeader
         title="Список звонков"
         description="Все записи разговоров менеджеров"
-        healthStatus={health?.status}
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">

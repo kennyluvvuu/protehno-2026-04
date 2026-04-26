@@ -1,5 +1,6 @@
 import RecordService from "../records/service";
 import RecordAiService from "../records/ai-service";
+import { detectAudioDurationSec } from "../records/audio-duration";
 import { IStorage } from "../../storage/interface";
 import { MangoClient } from "./client";
 import UserService from "../user/service";
@@ -140,10 +141,12 @@ export class MangoIngestionService {
             // Save to storage using same LocalStorage used by manual uploads
             const storageKey = `mango/${event.entry_id}/${fileName}`;
             const fileUri = await this.storage.upload(storageKey, audioFile);
+            const durationSec = await detectAudioDurationSec(fileUri);
 
             mangoLog("audio saved to storage", {
                 fileUri,
                 recording_id: event.recording_id,
+                durationSec,
             });
 
             // Update record: set fileUri, mangoRecordingId, hasAudio=true, status=queued
@@ -151,6 +154,7 @@ export class MangoIngestionService {
                 record.id,
                 fileUri,
                 event.recording_id,
+                durationSec,
             );
 
             // Trigger AI pipeline — same flow as manual upload

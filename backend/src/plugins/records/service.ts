@@ -252,7 +252,9 @@ class RecordService {
                 transcription: payload.transcription,
                 summary: payload.summary,
                 title: payload.title ?? null,
-                durationSec: payload.durationSec ?? null,
+                ...(typeof payload.durationSec === "number"
+                    ? { durationSec: payload.durationSec }
+                    : {}),
                 qualityScore: payload.qualityScore ?? null,
                 status: "done",
                 error: null,
@@ -391,6 +393,7 @@ class RecordService {
         recordId: number,
         fileUri: string,
         mangoRecordingId: string,
+        durationSec?: number | null,
     ): Promise<GetRecord> {
         const [updated] = await this.db
             .update(recordTable)
@@ -401,6 +404,7 @@ class RecordService {
                 ingestionStatus: "ready",
                 // Transition to queued so the AI pipeline can pick it up
                 status: "queued",
+                ...(typeof durationSec === "number" ? { durationSec } : {}),
             })
             .where(eq(recordTable.id, recordId))
             .returning();

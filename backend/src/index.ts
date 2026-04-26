@@ -7,6 +7,7 @@ import authPlugin from "./plugins/auth";
 import { recordsPlugin } from "./plugins/records";
 import RecordService from "./plugins/records/service";
 import LocalStorage from "./storage/local";
+import S3Storage from "./storage/s3";
 import { cors } from "@elysiajs/cors";
 import AIService from "./plugins/records/ai-service";
 import { MangoClient } from "./plugins/mango/client";
@@ -20,8 +21,8 @@ import { StatsService } from "./plugins/stats/service";
 async function bootstrapServer() {
     const db = getDbConnection(Bun.env.DATABASE_URL!);
     const userService = new UserService(db);
-    const localStorage = new LocalStorage("./uploads/");
-    const recordsService = new RecordService(db, localStorage);
+    const storage = new LocalStorage("./uploads/");
+    const recordsService = new RecordService(db, storage);
     const aiService = new AIService();
     const statsService = new StatsService(db);
 
@@ -36,7 +37,7 @@ async function bootstrapServer() {
     const mangoIngestionService = new MangoIngestionService(
         recordsService,
         userService,
-        localStorage,
+        storage,
         aiService,
         mangoClient,
     );
@@ -67,9 +68,7 @@ async function bootstrapServer() {
         })
         .use(authPlugin(userService))
         .use(userPlugin(userService, recordsService))
-        .use(
-            recordsPlugin(recordsService, localStorage, aiService, userService),
-        )
+        .use(recordsPlugin(recordsService, storage, aiService, userService))
         .use(statsPlugin(statsService, userService))
         .use(mangoWebhookPlugin(mangoClient, mangoIngestionService))
         .use(
@@ -77,7 +76,7 @@ async function bootstrapServer() {
                 mangoClient,
                 recordsService,
                 userService,
-                localStorage,
+                storage,
                 aiService,
             ),
         )

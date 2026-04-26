@@ -19,7 +19,9 @@
     "drizzle-zod": "^0.8.3",
     "elysia": "latest",
     "pg": "^8.20.0",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "@aws-sdk/client-s3": "^3.863.0",
+    "@aws-sdk/s3-request-presigner": "^3.863.0"
   },
   "devDependencies": {
     "bun-types": "latest"

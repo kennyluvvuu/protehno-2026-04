@@ -7,6 +7,7 @@ import {
     type UpdateRecordCheckboxes,
     type UploadRecord,
 } from "./schema";
+import { detectAudioDurationSec } from "./audio-duration";
 import { IStorage } from "../../storage/interface";
 import RecordService from "./service";
 import RecordAiService from "./ai-service";
@@ -122,12 +123,14 @@ export const recordsPlugin = (
                     `${userId}/${Date.now()}-${file.name}`,
                     file,
                 );
+                const durationSec = await detectAudioDurationSec(fileUri);
 
                 const newRecord = await recordService.createRecord({
                     userId,
                     fileUri,
                     callTo: callTo?.trim() || null,
                     title: normalizedTitle,
+                    durationSec,
                     status: "queued",
                 });
 
