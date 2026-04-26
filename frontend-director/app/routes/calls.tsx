@@ -6,8 +6,10 @@ import {
   ArrowUpDown,
   CalendarDays,
   Check,
+  ChevronDown,
   Download,
   Filter,
+  FileSpreadsheet,
   Loader2,
   Mic,
   Search,
@@ -22,6 +24,7 @@ import { Skeleton } from "~/components/ui/skeleton";
 import { Button } from "~/components/ui/button";
 import { mangoApi } from "~/axios/mango";
 import { getApiErrorMessage } from "~/lib/api-error";
+import { exportRecords } from "~/lib/export-records";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -83,10 +86,17 @@ function isMissedCall(record: Record): boolean {
   );
 }
 
-function DirectionBadge({ directionKind }: { directionKind?: DirectionKind | null }) {
+function DirectionBadge({
+  directionKind,
+}: {
+  directionKind?: DirectionKind | null;
+}) {
   if (directionKind === "inbound") {
     return (
-      <Badge variant="outline" className="gap-1 border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
+      <Badge
+        variant="outline"
+        className="gap-1 border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-300"
+      >
         <ArrowDown className="size-3" />
         Входящий
       </Badge>
@@ -94,14 +104,20 @@ function DirectionBadge({ directionKind }: { directionKind?: DirectionKind | nul
   }
   if (directionKind === "outbound") {
     return (
-      <Badge variant="outline" className="gap-1 border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-700 dark:bg-violet-950/30 dark:text-violet-300">
+      <Badge
+        variant="outline"
+        className="gap-1 border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-700 dark:bg-violet-950/30 dark:text-violet-300"
+      >
         <ArrowUp className="size-3" />
         Исходящий
       </Badge>
     );
   }
   return (
-    <Badge variant="outline" className="border-neutral-200 text-neutral-400 dark:border-neutral-700">
+    <Badge
+      variant="outline"
+      className="border-neutral-200 text-neutral-400 dark:border-neutral-700"
+    >
       —
     </Badge>
   );
@@ -110,20 +126,29 @@ function DirectionBadge({ directionKind }: { directionKind?: DirectionKind | nul
 function CallStatusBadge({ record }: { record: Record }) {
   if (record.status === "failed") {
     return (
-      <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-950/35 dark:text-red-300">
+      <Badge
+        variant="outline"
+        className="border-red-200 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-950/35 dark:text-red-300"
+      >
         Ошибка
       </Badge>
     );
   }
   if (isMissedCall(record)) {
     return (
-      <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-700 dark:bg-orange-950/35 dark:text-orange-300">
+      <Badge
+        variant="outline"
+        className="border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-700 dark:bg-orange-950/35 dark:text-orange-300"
+      >
         Пропущенный
       </Badge>
     );
   }
   return (
-    <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700 dark:border-green-700 dark:bg-green-950/35 dark:text-green-300">
+    <Badge
+      variant="outline"
+      className="border-green-200 bg-green-50 text-green-700 dark:border-green-700 dark:bg-green-950/35 dark:text-green-300"
+    >
       Принятый
     </Badge>
   );
@@ -360,11 +385,15 @@ export default function Calls() {
         result.fetched != null && `Получено: ${result.fetched}`,
         result.created != null && `Создано: ${result.created}`,
         result.downloaded != null && `Скачано: ${result.downloaded}`,
-      ].filter(Boolean).join(" · ");
+      ]
+        .filter(Boolean)
+        .join(" · ");
       toast.success(parts || "Синхронизация завершена");
     },
     onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Не удалось выполнить синхронизацию Mango"));
+      toast.error(
+        getApiErrorMessage(error, "Не удалось выполнить синхронизацию Mango"),
+      );
     },
   });
 
@@ -372,8 +401,10 @@ export default function Calls() {
   const [sortField, setSortField] = useState<SortField>("startedAt");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [callKindFilter, setCallKindFilter] = useState<CallKindFilter>("all");
-  const [directionFilter, setDirectionFilter] = useState<DirectionFilter>("all");
-  const [processingFilter, setProcessingFilter] = useState<ProcessingFilter>("all");
+  const [directionFilter, setDirectionFilter] =
+    useState<DirectionFilter>("all");
+  const [processingFilter, setProcessingFilter] =
+    useState<ProcessingFilter>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [selected, setSelected] = useState<Record | null>(null);
@@ -422,8 +453,12 @@ export default function Calls() {
       const matchKind =
         callKindFilter === "all" ||
         (callKindFilter === "failed" && record.status === "failed") ||
-        (callKindFilter === "missed" && record.status !== "failed" && isMissedCall(record)) ||
-        (callKindFilter === "accepted" && record.status !== "failed" && !isMissedCall(record));
+        (callKindFilter === "missed" &&
+          record.status !== "failed" &&
+          isMissedCall(record)) ||
+        (callKindFilter === "accepted" &&
+          record.status !== "failed" &&
+          !isMissedCall(record));
 
       const matchProcessing =
         processingFilter === "all" || record.status === processingFilter;
@@ -512,21 +547,62 @@ export default function Calls() {
         title="Список звонков"
         description="Все записи разговоров менеджеров"
         actions={
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void syncMutation.mutateAsync()}
-            disabled={syncMutation.isPending}
-            className="gap-1.5"
-          >
-            {syncMutation.isPending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Download className="size-4" />
-            )}
-            Притянуть звонки из Mango
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={filtered.length === 0}
+                >
+                  <FileSpreadsheet className="size-4" />
+                  Экспорт
+                  <ChevronDown className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-44">
+                <DropdownMenuItem
+                  onClick={() =>
+                    void exportRecords("csv", {
+                      records: filtered,
+                      fileName: "director-calls-export",
+                      sheetName: "Calls",
+                    })
+                  }
+                >
+                  CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() =>
+                    void exportRecords("xlsx", {
+                      records: filtered,
+                      fileName: "director-calls-export",
+                      sheetName: "Calls",
+                    })
+                  }
+                >
+                  XLSX
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void syncMutation.mutateAsync()}
+              disabled={syncMutation.isPending}
+              className="gap-1.5"
+            >
+              {syncMutation.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Download className="size-4" />
+              )}
+              Притянуть звонки из Mango
+            </Button>
+          </div>
         }
       />
 
@@ -615,16 +691,26 @@ export default function Calls() {
             <Button variant="outline" size="sm" className="gap-1.5">
               <Filter className="size-3.5" />
               Фильтры
-              {(callKindFilter !== "all" || directionFilter !== "all" || processingFilter !== "all") && (
+              {(callKindFilter !== "all" ||
+                directionFilter !== "all" ||
+                processingFilter !== "all") && (
                 <span className="ml-0.5 flex size-4 items-center justify-center rounded-full bg-neutral-800 text-[10px] text-white dark:bg-neutral-300 dark:text-neutral-900">
-                  {[callKindFilter !== "all", directionFilter !== "all", processingFilter !== "all"].filter(Boolean).length}
+                  {
+                    [
+                      callKindFilter !== "all",
+                      directionFilter !== "all",
+                      processingFilter !== "all",
+                    ].filter(Boolean).length
+                  }
                 </span>
               )}
             </Button>
           </DropdownMenuTrigger>
 
           <DropdownMenuContent align="start" className="w-48">
-            <DropdownMenuLabel className="text-xs text-neutral-400">Звонок</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs text-neutral-400">
+              Звонок
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {CALL_KIND_OPTIONS.map(({ value, label }) => (
               <DropdownMenuItem
@@ -633,12 +719,16 @@ export default function Calls() {
                 className="flex items-center justify-between"
               >
                 {label}
-                {callKindFilter === value && <Check className="size-3.5 text-neutral-600" />}
+                {callKindFilter === value && (
+                  <Check className="size-3.5 text-neutral-600" />
+                )}
               </DropdownMenuItem>
             ))}
 
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-xs text-neutral-400">Направление</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs text-neutral-400">
+              Направление
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {DIRECTION_OPTIONS.map(({ value, label }) => (
               <DropdownMenuItem
@@ -647,12 +737,16 @@ export default function Calls() {
                 className="flex items-center justify-between"
               >
                 {label}
-                {directionFilter === value && <Check className="size-3.5 text-neutral-600" />}
+                {directionFilter === value && (
+                  <Check className="size-3.5 text-neutral-600" />
+                )}
               </DropdownMenuItem>
             ))}
 
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-xs text-neutral-400">Обработка</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs text-neutral-400">
+              Обработка
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {PROCESSING_OPTIONS.map(({ value, label }) => (
               <DropdownMenuItem
@@ -661,7 +755,9 @@ export default function Calls() {
                 className="flex items-center justify-between"
               >
                 {label}
-                {processingFilter === value && <Check className="size-3.5 text-neutral-600" />}
+                {processingFilter === value && (
+                  <Check className="size-3.5 text-neutral-600" />
+                )}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -707,14 +803,30 @@ export default function Calls() {
             {isPending ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell><Skeleton className="h-4 w-40" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-14" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-40" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-28" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-16" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-20" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-14" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                  </TableCell>
                 </TableRow>
               ))
             ) : filtered.length === 0 ? (
@@ -755,7 +867,9 @@ export default function Calls() {
                       {agentName}
                     </TableCell>
                     <TableCell>
-                      <DirectionBadge directionKind={record.directionKind ?? null} />
+                      <DirectionBadge
+                        directionKind={record.directionKind ?? null}
+                      />
                     </TableCell>
                     <TableCell className="text-sm text-neutral-500">
                       {recordDate
