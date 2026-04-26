@@ -72,7 +72,7 @@ export function Sidebar({
             end={end}
             className={({ isActive }) =>
               cn(
-                "flex h-9 items-center rounded-md text-sm transition-colors",
+                "cursor-pointer flex h-9 items-center rounded-md text-sm transition-colors",
                 isCollapsed ? "justify-center px-0" : "gap-2.5 px-2.5",
                 isActive
                   ? "bg-neutral-100 text-neutral-900 font-medium dark:bg-neutral-700 dark:text-neutral-100"
@@ -97,7 +97,7 @@ export function Sidebar({
           <button
             type="button"
             onClick={() => navigate("/settings")}
-            className="flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs font-semibold text-white transition-opacity hover:opacity-80 dark:bg-neutral-700"
+            className="cursor-pointer flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs font-semibold text-white transition-opacity hover:opacity-80 dark:bg-neutral-700"
           >
             {(user.fio ?? user.name).charAt(0).toUpperCase()}
           </button>
@@ -105,7 +105,7 @@ export function Sidebar({
             <button
               type="button"
               onClick={() => navigate("/settings")}
-              className="min-w-0 flex-1 text-left transition-opacity hover:opacity-70"
+              className="cursor-pointer min-w-0 flex-1 text-left transition-opacity hover:opacity-70"
             >
               <p className="truncate text-xs font-medium">
                 {user.fio ?? user.name}
@@ -119,7 +119,7 @@ export function Sidebar({
             type="button"
             onClick={handleLogout}
             aria-label="Выйти из системы"
-            className="flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+            className="cursor-pointer flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
           >
             <LogOut className="size-3.5" />
           </button>

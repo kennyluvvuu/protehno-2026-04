@@ -10,6 +10,10 @@ import {
   Star,
   Trash2,
   UserCog,
+  Clock,
+  PhoneMissed,
+  Activity,
+  TrendingUp,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Pagination } from "~/components/ui/pagination";
@@ -17,6 +21,23 @@ import { usePagination } from "~/hooks/usePagination";
 import { useForm } from "react-hook-form";
 import { useNavigate, useParams } from "react-router";
 import { z } from "zod";
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
+import { useAgentDashboard, type StatsPeriod } from "~/hooks/useStats";
 import { CallDetailSheet } from "~/components/calls/call-detail-sheet";
 import {
   AlertDialog,
@@ -42,6 +63,7 @@ import {
 } from "~/components/ui/dialog";
 import { Field } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
+import { PasswordInput } from "~/components/ui/password-input";
 import {
   Table,
   TableBody,
@@ -175,6 +197,36 @@ function toFormValues(user: User): EditUserFormValues {
   };
 }
 
+const PERIOD_OPTIONS: Array<{ value: StatsPeriod; label: string }> = [
+  { value: "7d", label: "7 дней" },
+  { value: "14d", label: "14 дней" },
+  { value: "30d", label: "30 дней" },
+  { value: "90d", label: "90 дней" },
+];
+
+function formatDurationSec(sec: number | null): string {
+  if (sec == null) return "—";
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
+}
+
+function AgentStatItem({ label, value, icon: Icon }: { label: string; value: string | number; icon?: React.ElementType }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <p className="text-[10px] uppercase tracking-wide text-neutral-400">{label}</p>
+      <p className="text-xl font-semibold tracking-tight flex items-center gap-1">
+        {Icon && <Icon className="size-3.5 text-neutral-400" />}
+        {value}
+      </p>
+    </div>
+  );
+}
+
 export default function UserDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -182,9 +234,8 @@ export default function UserDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
-  const [resetPasswordError, setResetPasswordError] = useState<string | null>(
-    null,
-  );
+  const [resetPasswordError, setResetPasswordError] = useState<string | null>(null);
+  const [analyticsPeriod, setAnalyticsPeriod] = useState<StatsPeriod>("7d");
 
   const { data: users = [], isLoading: usersLoading } = useUsers();
   const { data: records = [], isLoading: recordsLoading } = useRecords();
@@ -193,6 +244,11 @@ export default function UserDetailPage() {
 
   const userId = id ? Number.parseInt(id, 10) : null;
   const user = users.find((item) => item.id === userId);
+
+  const { data: agentDashboard, isPending: agentPending } = useAgentDashboard(
+    userId,
+    { period: analyticsPeriod },
+  );
 
   const {
     register,
@@ -243,23 +299,16 @@ export default function UserDetailPage() {
     setPage: setRecordsPage,
   } = usePagination(userRecords);
 
-  const doneCount = userRecords.filter(
-    (record) => record.status === "done",
-  ).length;
-  const failedCount = userRecords.filter(
-    (record) => record.status === "failed",
-  ).length;
-
-  const scoredRecords = userRecords.filter(
-    (record) => record.qualityScore != null,
+  const trendData = useMemo(
+    () => (agentDashboard?.trend ?? []).map((t) => ({
+      day: formatDate(t.date),
+      total: t.total,
+      done: t.done,
+      failed: t.failed,
+      missed: t.missed,
+    })),
+    [agentDashboard],
   );
-  const avgQuality =
-    scoredRecords.length > 0
-      ? scoredRecords.reduce(
-          (sum, record) => sum + (record.qualityScore ?? 0),
-          0,
-        ) / scoredRecords.length
-      : null;
 
   const isLoading = usersLoading || recordsLoading;
 
@@ -393,14 +442,43 @@ export default function UserDetailPage() {
         </Card>
 
         <Card className="lg:col-span-2">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-sm font-medium">Аналитика</CardTitle>
+            <div className="w-36">
+              <Select value={analyticsPeriod} onValueChange={(v) => setAnalyticsPeriod(v as StatsPeriod)}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Период" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PERIOD_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-6 md:grid-cols-4">
-            <StatItem label="Всего звонков" value={userRecords.length} />
-            <StatItem label="Выполнено" value={doneCount} />
-            <StatItem label="Ошибок" value={failedCount} />
-            <StatItem label="Средний балл" value={formatQuality(avgQuality)} />
+          <CardContent>
+            {agentPending ? (
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="flex flex-col gap-1">
+                    <Skeleton className="h-2.5 w-16" />
+                    <Skeleton className="h-6 w-12" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                <AgentStatItem label="Всего" value={agentDashboard?.overview.totalRecords ?? 0} icon={FileAudio} />
+                <AgentStatItem label="Выполнено" value={agentDashboard?.overview.doneRecords ?? 0} icon={TrendingUp} />
+                <AgentStatItem label="Ошибки" value={agentDashboard?.overview.failedRecords ?? 0} />
+                <AgentStatItem label="Средний балл" value={formatQuality(agentDashboard?.overview.avgQualityScore ?? null)} icon={Activity} />
+                <AgentStatItem label="Пропущено" value={agentDashboard?.overview.missedRecords ?? 0} icon={PhoneMissed} />
+                <AgentStatItem label="Нет аудио" value={agentDashboard?.overview.noAudioRecords ?? 0} />
+                <AgentStatItem label="Ср. длит." value={formatDurationSec(agentDashboard?.overview.avgTalkDurationSec ?? null)} icon={Clock} />
+                <AgentStatItem label="Ср. обработка" value={formatDurationSec(agentDashboard?.overview.avgProcessingDurationSec ?? null)} />
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -547,6 +625,40 @@ export default function UserDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Trend chart */}
+      {!agentPending && trendData.length > 0 && (
+        <Card className="mt-4">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Тренд звонков</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={180}>
+              <LineChart data={trendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip
+                  contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                  formatter={(v: number, name: string) => [v, { total: "Всего", done: "Выполнено", failed: "Ошибки", missed: "Пропущено" }[name] ?? name]}
+                />
+                <Line type="monotone" dataKey="total" stroke="#64748b" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="done" stroke="#22c55e" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="failed" stroke="#ef4444" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="missed" stroke="#f97316" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+            <div className="mt-2 flex flex-wrap gap-4 text-xs text-neutral-500">
+              {[{ color: "#64748b", label: "Всего" }, { color: "#22c55e", label: "Выполнено" }, { color: "#ef4444", label: "Ошибки" }, { color: "#f97316", label: "Пропущено" }].map((l) => (
+                <span key={l.label} className="flex items-center gap-1">
+                  <span className="inline-block size-2 rounded-full" style={{ background: l.color }} />
+                  {l.label}
+                </span>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="mt-6">
         <h2 className="mb-3 text-sm font-medium text-neutral-700 dark:text-neutral-300">
@@ -701,9 +813,8 @@ export default function UserDetailPage() {
               htmlFor="reset-password"
               error={resetPasswordErrors.password?.message}
             >
-              <Input
+              <PasswordInput
                 id="reset-password"
-                type="password"
                 placeholder="Минимум 6 символов"
                 hasError={!!resetPasswordErrors.password}
                 {...registerResetPassword("password")}

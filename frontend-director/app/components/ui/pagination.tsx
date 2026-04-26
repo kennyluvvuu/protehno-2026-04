@@ -29,7 +29,7 @@ export function Pagination({ page, totalPages, onPageChange, className }: Pagina
                 type="button"
                 onClick={() => onPageChange(page - 1)}
                 disabled={page === 1}
-                className="flex size-8 items-center justify-center rounded-md border border-neutral-200 text-neutral-500 transition-colors hover:bg-neutral-50 disabled:pointer-events-none disabled:opacity-40 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                className="cursor-pointer flex size-8 items-center justify-center rounded-md border border-neutral-200 text-neutral-500 transition-colors hover:bg-neutral-50 disabled:pointer-events-none disabled:opacity-40 dark:border-neutral-700 dark:hover:bg-neutral-800"
             >
                 <ChevronLeft className="size-3.5" />
             </button>
@@ -45,7 +45,7 @@ export function Pagination({ page, totalPages, onPageChange, className }: Pagina
                         type="button"
                         onClick={() => onPageChange(p)}
                         className={cn(
-                            "flex size-8 items-center justify-center rounded-md border text-xs font-medium transition-colors",
+                            "cursor-pointer flex size-8 items-center justify-center rounded-md border text-xs font-medium transition-colors",
                             p === page
                                 ? "border-neutral-800 bg-neutral-800 text-white dark:border-neutral-200 dark:bg-neutral-200 dark:text-neutral-900"
                                 : "border-neutral-200 text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800",
@@ -60,7 +60,7 @@ export function Pagination({ page, totalPages, onPageChange, className }: Pagina
                 type="button"
                 onClick={() => onPageChange(page + 1)}
                 disabled={page === totalPages}
-                className="flex size-8 items-center justify-center rounded-md border border-neutral-200 text-neutral-500 transition-colors hover:bg-neutral-50 disabled:pointer-events-none disabled:opacity-40 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                className="cursor-pointer flex size-8 items-center justify-center rounded-md border border-neutral-200 text-neutral-500 transition-colors hover:bg-neutral-50 disabled:pointer-events-none disabled:opacity-40 dark:border-neutral-700 dark:hover:bg-neutral-800"
             >
                 <ChevronRight className="size-3.5" />
             </button>

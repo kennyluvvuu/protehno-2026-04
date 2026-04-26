@@ -47,6 +47,10 @@ export const recordsApi = {
     return data;
   },
 
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/records/${id}`);
+  },
+
   upload: async (
     payload: UploadRecordPayload,
   ): Promise<UploadRecordResponse> => {

@@ -1,5 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { recordsApi } from "~/axios/records";
+import { getApiErrorMessage } from "~/lib/api-error";
 import type { Record } from "~/types/record";
 
 export const RECORDS_KEY = ["records", "admin-feed"];
@@ -18,5 +20,19 @@ export function useRecords() {
     queryFn: () => recordsApi.getAdminFeed(),
     refetchInterval: (query) => getRefetchInterval(query.state.data as Record[] | undefined),
     refetchIntervalInBackground: false,
+  });
+}
+
+export function useDeleteRecord() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => recordsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: RECORDS_KEY });
+      toast.success("Запись удалена");
+    },
+    onError: (error: unknown) => {
+      toast.error(getApiErrorMessage(error, "Не удалось удалить запись"));
+    },
   });
 }

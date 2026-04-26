@@ -47,13 +47,20 @@ import type {
   SortField,
 } from "~/types/record";
 
-type StatusFilter = RecordStatus | "all";
+type CallKindFilter = "all" | "accepted" | "missed" | "failed";
+type DirectionFilter = "all" | "inbound" | "outbound";
 
-const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
-  { value: "all", label: "Все статусы" },
-  { value: "done", label: "Выполнено" },
+const CALL_KIND_OPTIONS: { value: CallKindFilter; label: string }[] = [
+  { value: "all", label: "Все звонки" },
+  { value: "accepted", label: "Принятые" },
+  { value: "missed", label: "Пропущенные" },
   { value: "failed", label: "Ошибка" },
-  { value: "processing", label: "В обработке" },
+];
+
+const DIRECTION_OPTIONS: { value: DirectionFilter; label: string }[] = [
+  { value: "all", label: "Все направления" },
+  { value: "inbound", label: "Входящие" },
+  { value: "outbound", label: "Исходящие" },
 ];
 
 type SearchableRecord = Record & {
@@ -131,6 +138,61 @@ function matchesDate(
   return true;
 }
 
+function isMissedCall(record: Record): boolean {
+  return (
+    record.isMissed === true ||
+    record.ingestionStatus === "no_audio" ||
+    record.status === "not_applicable" ||
+    (record.talkDurationSec != null && record.talkDurationSec === 0)
+  );
+}
+
+function DirectionBadge({ directionKind }: { directionKind?: DirectionKind | null }) {
+  if (directionKind === "inbound") {
+    return (
+      <Badge variant="outline" className="gap-1 border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
+        <ArrowDown className="size-3" />
+        Входящий
+      </Badge>
+    );
+  }
+  if (directionKind === "outbound") {
+    return (
+      <Badge variant="outline" className="gap-1 border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-700 dark:bg-violet-950/30 dark:text-violet-300">
+        <ArrowUp className="size-3" />
+        Исходящий
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="border-neutral-200 text-neutral-400 dark:border-neutral-700">
+      —
+    </Badge>
+  );
+}
+
+function CallStatusBadge({ record }: { record: Record }) {
+  if (record.status === "failed") {
+    return (
+      <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-950/35 dark:text-red-300">
+        Ошибка
+      </Badge>
+    );
+  }
+  if (isMissedCall(record)) {
+    return (
+      <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-700 dark:bg-orange-950/35 dark:text-orange-300">
+        Пропущенный
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700 dark:border-green-700 dark:bg-green-950/35 dark:text-green-300">
+      Принятый
+    </Badge>
+  );
+}
+
 function StatusBadge({ status }: { status: RecordStatus }) {
   if (status === "done")
     return (
@@ -179,7 +241,8 @@ export default function Calls() {
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<SortField>("startedAt");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [callKindFilter, setCallKindFilter] = useState<CallKindFilter>("all");
+  const [directionFilter, setDirectionFilter] = useState<DirectionFilter>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [selected, setSelected] = useState<Record | null>(null);
@@ -216,9 +279,18 @@ export default function Calls() {
     const query = search.trim();
 
     let list = searchableRecords.filter((r) => {
-      const matchStatus = statusFilter === "all" || r.status === statusFilter;
       const matchDate = matchesDate(r.startedAt, dateFrom, dateTo);
-      return matchStatus && matchDate;
+
+      const matchDirection =
+        directionFilter === "all" || r.directionKind === directionFilter;
+
+      const matchKind =
+        callKindFilter === "all" ||
+        (callKindFilter === "failed" && r.status === "failed") ||
+        (callKindFilter === "missed" && r.status !== "failed" && isMissedCall(r)) ||
+        (callKindFilter === "accepted" && r.status !== "failed" && !isMissedCall(r));
+
+      return matchDate && matchDirection && matchKind;
     });
 
     if (query.length >= 2) {
@@ -247,7 +319,8 @@ export default function Calls() {
     search,
     sortField,
     sortDir,
-    statusFilter,
+    callKindFilter,
+    directionFilter,
     dateFrom,
     dateTo,
     fuse,
@@ -365,29 +438,39 @@ export default function Calls() {
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="gap-1.5">
               <Filter className="size-3.5" />
-              Фильтрация
-              {statusFilter !== "all" && (
+              Фильтры
+              {(callKindFilter !== "all" || directionFilter !== "all") && (
                 <span className="ml-0.5 flex size-4 items-center justify-center rounded-full bg-neutral-800 text-[10px] text-white dark:bg-neutral-300 dark:text-neutral-900">
-                  1
+                  {[callKindFilter !== "all", directionFilter !== "all"].filter(Boolean).length}
                 </span>
               )}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-44">
-            <DropdownMenuLabel className="text-xs text-neutral-400">
-              Статус
-            </DropdownMenuLabel>
+          <DropdownMenuContent align="start" className="w-48">
+            <DropdownMenuLabel className="text-xs text-neutral-400">Звонок</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {STATUS_OPTIONS.map(({ value, label }) => (
+            {CALL_KIND_OPTIONS.map(({ value, label }) => (
               <DropdownMenuItem
                 key={value}
-                onClick={() => setStatusFilter(value)}
+                onClick={() => setCallKindFilter(value)}
                 className="flex items-center justify-between"
               >
                 {label}
-                {statusFilter === value && (
-                  <Check className="size-3.5 text-neutral-600" />
-                )}
+                {callKindFilter === value && <Check className="size-3.5 text-neutral-600" />}
+              </DropdownMenuItem>
+            ))}
+
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-xs text-neutral-400">Направление</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {DIRECTION_OPTIONS.map(({ value, label }) => (
+              <DropdownMenuItem
+                key={value}
+                onClick={() => setDirectionFilter(value)}
+                className="flex items-center justify-between"
+              >
+                {label}
+                {directionFilter === value && <Check className="size-3.5 text-neutral-600" />}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -410,6 +493,7 @@ export default function Calls() {
               >
                 Контрагент <SortIcon field="callTo" />
               </TableHead>
+              <TableHead>Направление</TableHead>
               <TableHead
                 className="cursor-pointer select-none"
                 onClick={() => toggleSort("startedAt")}
@@ -422,6 +506,7 @@ export default function Calls() {
               >
                 Длит. <SortIcon field="durationSec" />
               </TableHead>
+              <TableHead>Звонок</TableHead>
               <TableHead>Статус</TableHead>
             </TableRow>
           </TableHeader>
@@ -429,26 +514,18 @@ export default function Calls() {
             {isPending ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell>
-                    <Skeleton className="h-4 w-40" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-28" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-16" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-14" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-5 w-20 rounded-full" />
-                  </TableCell>
+                  <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-14" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
                 </TableRow>
               ))
             ) : filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="py-16 text-center">
+                <TableCell colSpan={7} className="py-16 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <Mic className="size-8 text-neutral-300" />
                     <p className="text-sm text-neutral-500">
@@ -473,12 +550,10 @@ export default function Calls() {
                     {r.title ?? `Звонок #${r.id}`}
                   </TableCell>
                   <TableCell className="text-neutral-600 dark:text-neutral-400">
-                    <div className="flex flex-col gap-1">
-                      <span>{getDisplayCounterparty(r)}</span>
-                      <span className="text-xs text-neutral-400">
-                        {getDirectionLabel(r.directionKind ?? null)}
-                      </span>
-                    </div>
+                    {getDisplayCounterparty(r)}
+                  </TableCell>
+                  <TableCell>
+                    <DirectionBadge directionKind={r.directionKind ?? null} />
                   </TableCell>
                   <TableCell className="text-neutral-500 text-sm">
                     {r.startedAt
@@ -489,6 +564,9 @@ export default function Calls() {
                     {r.durationSec != null
                       ? formatDuration(r.durationSec)
                       : "—"}
+                  </TableCell>
+                  <TableCell>
+                    <CallStatusBadge record={r} />
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={r.status} />

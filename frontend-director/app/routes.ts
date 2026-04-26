@@ -13,7 +13,6 @@ export default [
     route("calls", "routes/calls.tsx"),
     route("users", "routes/users.tsx"),
     route("users/:id", "routes/users.$id.tsx"),
-    route("mango", "routes/mango.tsx"),
-    route("settings", "routes/settings.tsx"),
+route("settings", "routes/settings.tsx"),
   ]),
 ] satisfies RouteConfig;

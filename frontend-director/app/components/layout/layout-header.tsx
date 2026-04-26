@@ -42,7 +42,7 @@ export function LayoutHeader({
           <button
             type="button"
             onClick={() => setIsSearchOpen(true)}
-            className="flex h-9 w-80 max-w-[50vw] items-center gap-2 rounded-lg border border-input bg-background px-3 text-sm text-muted-foreground transition-colors hover:border-neutral-300 dark:hover:border-neutral-600"
+            className="cursor-pointer flex h-9 w-80 max-w-[50vw] items-center gap-2 rounded-lg border border-input bg-background px-3 text-sm text-muted-foreground transition-colors hover:border-neutral-300 dark:hover:border-neutral-600"
             aria-label="Открыть поиск"
           >
             <Search className="size-3.5" />

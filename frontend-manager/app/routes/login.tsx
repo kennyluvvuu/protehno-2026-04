@@ -7,6 +7,7 @@ import { AuthShell } from "~/components/layout";
 import { Button } from "~/components/ui/button";
 import { Field } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
+import { PasswordInput } from "~/components/ui/password-input";
 import { getApiErrorMessage } from "~/lib/api-error";
 import { loginSchema, type LoginSchema } from "~/schemas/auth";
 import { useAuthStore } from "~/stores/useAuthStore";
@@ -72,9 +73,8 @@ export default function Login() {
           htmlFor="password"
           error={errors.password?.message}
         >
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
             placeholder="••••••••"
             autoComplete="current-password"
             hasError={!!errors.password}
