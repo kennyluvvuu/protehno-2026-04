@@ -23,6 +23,7 @@
 }
 
 {$CADDY_LANDING_DOMAIN} {
+	header Content-Type "text/html; charset=utf-8"
 	respond <<HTML
 <!doctype html>
 <html lang="ru">
