@@ -1,7 +1,7 @@
-# JWT Users Call Intelligence Platform
+# Connectio
 
 Платформа для загрузки, синхронизации, обработки и аналитики звонков с приоритетом на интеграцию с Mango Office VPBX, AI-обогащение разговоров и встраивание данных в CRM.
-
+сейчас в проде) https://apogey.duckdns.org
 Проект состоит из трех приложений:
 
 - `backend` — API, ingestion, AI pipeline, статистика, интеграции
