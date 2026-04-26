@@ -193,7 +193,14 @@ export class StatsService {
         sql`coalesce(${recordTable.callStartedAt}, ${recordTable.callEndedAt}, ${recordTable.callAnsweredAt}, ${recordTable.finishedAt}, ${recordTable.startedAt})`;
 
     private readonly missedCondition =
-        sql`${recordTable.isMissed} = true or ${recordTable.ingestionStatus} = 'no_audio'`;
+        sql`${recordTable.isMissed} = true or ${recordTable.ingestionStatus} = 'no_audio' or ${recordTable.talkDurationSec} = 0`;
+
+    private buildInRangeCondition(start: Date, end: Date) {
+        return or(
+            and(gte(this.activityAt, start), lt(this.activityAt, end)),
+            and(this.missedCondition, sql`${this.activityAt} is null`),
+        )!;
+    }
 
     private buildAgentOwnershipCondition(
         userId: number,
@@ -290,6 +297,7 @@ export class StatsService {
 
     async getOverview(period?: string): Promise<StatsOverview> {
         const { start, end } = this.resolveRange({ period });
+        const inRange = this.buildInRangeCondition(start, end);
 
         const [recordsAggregate] = await this.db
             .select({
@@ -301,7 +309,7 @@ export class StatsService {
                 >`round(avg(${recordTable.qualityScore})::numeric, 1)`,
             })
             .from(recordTable)
-            .where(and(gte(this.activityAt, start), lt(this.activityAt, end)));
+            .where(inRange);
 
         const [managersAggregate] = await this.db
             .select({
@@ -325,6 +333,7 @@ export class StatsService {
 
     async getWeekly(period?: string): Promise<WeeklyStatsItem[]> {
         const { days, start, end } = this.resolveRange({ period });
+        const inRange = this.buildInRangeCondition(start, end);
 
         const rows = await this.db
             .select({
@@ -333,7 +342,7 @@ export class StatsService {
                 done: sql<number>`count(*) filter (where ${recordTable.status} = 'done')`,
             })
             .from(recordTable)
-            .where(and(gte(this.activityAt, start), lt(this.activityAt, end)))
+            .where(inRange)
             .groupBy(sql`date_trunc('day', ${this.activityAt})`)
             .orderBy(sql`date_trunc('day', ${this.activityAt}) asc`);
 
@@ -369,6 +378,7 @@ export class StatsService {
 
     async getByAgent(period?: string): Promise<AgentStatsItem[]> {
         const { start, end } = this.resolveRange({ period });
+        const inRange = this.buildInRangeCondition(start, end);
 
         const rows = await this.db
             .select({
@@ -398,8 +408,7 @@ export class StatsService {
                             eq(recordTable.mangoUserId, userTable.mangoUserId),
                         ),
                     ),
-                    gte(this.activityAt, start),
-                    lt(this.activityAt, end),
+                    inRange,
                 ),
             )
             .where(eq(userTable.role, "manager"))
@@ -430,10 +439,7 @@ export class StatsService {
         options?: StatsQueryOptions,
     ): Promise<GlobalStatsDashboard> {
         const range = this.resolveRange(options);
-        const inRange = and(
-            gte(this.activityAt, range.start),
-            lt(this.activityAt, range.end),
-        );
+        const inRange = this.buildInRangeCondition(range.start, range.end);
 
         const [overviewRow] = await this.db
             .select({
@@ -673,8 +679,7 @@ export class StatsService {
         const range = this.resolveRange(options);
         const inRange = and(
             this.buildAgentOwnershipCondition(options.userId, options.mangoUserId),
-            gte(this.activityAt, range.start),
-            lt(this.activityAt, range.end),
+            this.buildInRangeCondition(range.start, range.end),
         );
 
         const [overviewRow] = await this.db
@@ -879,6 +884,7 @@ export class StatsService {
         start: Date,
         end: Date,
     ): Promise<AgentStatsItem[]> {
+        const inRange = this.buildInRangeCondition(start, end);
         const rows = await this.db
             .select({
                 userId: userTable.id,
@@ -907,8 +913,7 @@ export class StatsService {
                             eq(recordTable.mangoUserId, userTable.mangoUserId),
                         ),
                     ),
-                    gte(this.activityAt, start),
-                    lt(this.activityAt, end),
+                    inRange,
                 ),
             )
             .where(eq(userTable.role, "manager"))
