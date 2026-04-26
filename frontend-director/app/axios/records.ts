@@ -1,5 +1,11 @@
 import { api } from "~/lib/axios-client";
+import { assertRequestCooldown } from "~/lib/request-guard";
 import type { Record } from "~/types/record";
+
+export interface RecordAudioMeta {
+  url: string;
+  downloadUrl: string;
+}
 
 export interface UploadRecordPayload {
   file: File;
@@ -21,6 +27,14 @@ export const recordsApi = {
     return data;
   },
 
+  getAudioMeta: (id: number): RecordAudioMeta => {
+    const downloadUrl = `/api/records/${id}/download`;
+    return {
+      url: downloadUrl,
+      downloadUrl,
+    };
+  },
+
   getById: async (id: number): Promise<Record> => {
     const { data } = await api.get<Record>(`/records/${id}`);
     return data;
@@ -36,6 +50,7 @@ export const recordsApi = {
   upload: async (
     payload: UploadRecordPayload,
   ): Promise<UploadRecordResponse> => {
+    assertRequestCooldown("records:upload", 1500);
     const formData = new FormData();
     formData.append("file", payload.file);
 

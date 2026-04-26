@@ -6,6 +6,7 @@ export default [
     layout("routes/_protected.tsx", [
         index("routes/home.tsx"),
         route("calls", "routes/calls.tsx"),
+        route("tasks", "routes/tasks.tsx"),
         route("upload", "routes/upload.tsx"),
         route("settings", "routes/settings.tsx"),
     ]),

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { usersApi, type CreateUserPayload } from "~/axios/users";
+import { getApiErrorMessage } from "~/lib/api-error";
 import type { User } from "~/types/auth";
 
 export const USERS_KEY = ["users"] as const;
@@ -40,8 +41,8 @@ export function useCreateUser() {
       await queryClient.invalidateQueries({ queryKey: USERS_KEY });
       toast.success("Менеджер добавлен");
     },
-    onError: () => {
-      toast.error("Не удалось добавить менеджера");
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Не удалось добавить менеджера"));
     },
   });
 }
@@ -55,8 +56,10 @@ export function useUpdateUser() {
       await queryClient.invalidateQueries({ queryKey: USERS_KEY });
       toast.success("Пользователь обновлён");
     },
-    onError: () => {
-      toast.error("Не удалось обновить пользователя");
+    onError: (error) => {
+      toast.error(
+        getApiErrorMessage(error, "Не удалось обновить пользователя"),
+      );
     },
   });
 }
@@ -70,8 +73,8 @@ export function useDeleteUser() {
       await queryClient.invalidateQueries({ queryKey: USERS_KEY });
       toast.success("Пользователь удалён");
     },
-    onError: () => {
-      toast.error("Не удалось удалить пользователя");
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Не удалось удалить пользователя"));
     },
   });
 }
@@ -90,8 +93,8 @@ export function useSetOwnMangoUserId() {
           : "Mango ID успешно сохранён",
       );
     },
-    onError: () => {
-      toast.error("Не удалось сохранить Mango ID");
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Не удалось сохранить Mango ID"));
     },
   });
 }

@@ -5,6 +5,7 @@ import { useCallback, useRef, useState } from "react"
 import { useForm } from "react-hook-form"
 import { useNavigate } from "react-router"
 import { toast } from "sonner"
+import { useQueryClient } from "@tanstack/react-query"
 import { z } from "zod"
 import { recordsApi } from "~/axios/records"
 import { PageHeader } from "~/components/layout"
@@ -12,6 +13,7 @@ import { Button } from "~/components/ui/button"
 import { Field } from "~/components/ui/field"
 import { Input } from "~/components/ui/input"
 import { cn } from "~/lib/cn"
+import { RECORDS_KEY } from "~/hooks/useRecords"
 
 const uploadSchema = z.object({
     title: z.string().trim().optional(),
@@ -22,6 +24,7 @@ type UploadSchema = z.infer<typeof uploadSchema>
 
 export default function UploadPage() {
     const navigate = useNavigate()
+    const queryClient = useQueryClient()
     const inputRef = useRef<HTMLInputElement>(null)
     const [file, setFile] = useState<File | null>(null)
     const [isDragging, setIsDragging] = useState(false)
@@ -73,6 +76,7 @@ export default function UploadPage() {
                 title: data.title || undefined,
                 callTo: data.callTo || undefined,
             })
+            await queryClient.invalidateQueries({ queryKey: RECORDS_KEY })
             toast.success("Файл загружен и поставлен в очередь обработки")
             navigate("/calls")
         } catch (error) {
@@ -115,7 +119,7 @@ export default function UploadPage() {
                                 <button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); setFile(null) }}
-                                    className="mt-3 flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                                    className="mt-3 flex items-center gap-1 text-xs text-red-600/70 hover:text-red-700 dark:text-red-500/70 dark:hover:text-red-400"
                                 >
                                     <X className="size-3.5" />
                                     Удалить

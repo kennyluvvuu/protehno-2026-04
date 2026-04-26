@@ -10,7 +10,6 @@ import { Toaster } from "sonner"
 
 import type { Route } from "./+types/root"
 import "./app.css"
-import { authApi } from "./axios/auth"
 import { useThemeSync } from "./hooks/useThemeSync"
 import "./lib/axios-interceptors"
 
@@ -29,18 +28,9 @@ export const links: Route.LinksFunction = () => [
   },
 ]
 
-export async function loader({ request }: Route.LoaderArgs) {
-  try {
-    const user = await authApi.me(request.headers.get("cookie") ?? undefined)
-    return { user }
-  } catch {
-    return { user: null }
-  }
-}
-
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ru">
+    <html lang="ru" suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

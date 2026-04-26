@@ -1,0 +1,23 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - button "Переключить тему" [ref=e4]:
+      - img [ref=e5]
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - text: Connectio
+        - paragraph [ref=e9]: Панель управления
+      - generic [ref=e10]:
+        - generic [ref=e11]:
+          - heading "Вход в систему" [level=1] [ref=e12]
+          - paragraph [ref=e13]: Введите данные вашего аккаунта
+        - generic [ref=e14]:
+          - generic [ref=e15]:
+            - generic [ref=e16]: Email
+            - textbox "Email" [ref=e17]:
+              - /placeholder: manager@example.com
+          - generic [ref=e18]:
+            - generic [ref=e19]: Пароль
+            - textbox "Пароль" [ref=e20]:
+              - /placeholder: ••••••••
+          - button "Войти" [ref=e21]
+  - region "Notifications alt+T"

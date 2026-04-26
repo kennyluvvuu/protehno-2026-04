@@ -1,3 +1,4 @@
+import Fuse from "fuse.js";
 import { FileAudio, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { PageHeader } from "~/components/layout";
@@ -13,25 +14,27 @@ import {
 import { useRecords } from "~/hooks/useRecords";
 import { useUsers } from "~/hooks/useUsers";
 import { cn } from "~/lib/utils";
-import type { Record } from "~/types/record";
+import type { DirectionKind, Record } from "~/types/record";
 
 type SearchField =
-  | "callTo"
+  | "counterparty"
   | "name"
   | "transcription"
   | "summary"
-  | "agentName";
+  | "agentName"
+  | "direction";
 
 type SearchResultRecord = Record & {
   agentName: string;
 };
 
 const SEARCH_FIELDS: { value: SearchField; label: string }[] = [
-  { value: "callTo", label: "По контрагенту" },
+  { value: "counterparty", label: "По контрагенту" },
   { value: "name", label: "По названию" },
   { value: "agentName", label: "По агенту" },
   { value: "transcription", label: "По тексту диалога" },
   { value: "summary", label: "По суммированию" },
+  { value: "direction", label: "По направлению" },
 ];
 
 function getDisplayName(record: Record): string {
@@ -43,12 +46,48 @@ function getAgentName(record: Record, userMap: Map<number, string>): string {
   return userMap.get(record.userId) ?? "Неизвестный менеджер";
 }
 
+function getDirectionLabel(directionKind?: DirectionKind | null): string {
+  if (directionKind === "inbound") return "Входящий";
+  if (directionKind === "outbound") return "Исходящий";
+  return "Неизвестно";
+}
+
+function getDisplayCounterparty(record: Record): string {
+  if (record.callTo) return record.callTo;
+
+  if (record.directionKind === "inbound") {
+    return record.callerNumber ?? record.calleeNumber ?? "—";
+  }
+
+  if (record.directionKind === "outbound") {
+    return record.calleeNumber ?? record.callerNumber ?? "—";
+  }
+
+  return record.callerNumber ?? record.calleeNumber ?? "—";
+}
+
 function getSearchValue(
   record: SearchResultRecord,
   field: SearchField,
 ): string {
   if (field === "name") return getDisplayName(record);
   if (field === "agentName") return record.agentName;
+  if (field === "counterparty") return getDisplayCounterparty(record);
+  if (field === "direction") {
+    const kind = record.directionKind ?? record.direction ?? "unknown";
+    const normalizedKind =
+      kind === "inbound" || kind === "outbound" || kind === "unknown"
+        ? kind
+        : "unknown";
+
+    return [
+      normalizedKind,
+      getDirectionLabel(normalizedKind),
+      "входящий",
+      "исходящий",
+    ].join(" ");
+  }
+
   return String(record[field] ?? "");
 }
 
@@ -131,8 +170,12 @@ function ResultCard({
               {highlight(displayName, field === "name" ? query : "")}
             </p>
             <p className="mt-0.5 text-xs text-neutral-500">
-              {highlight(record.callTo ?? "—", field === "callTo" ? query : "")}{" "}
+              {highlight(
+                getDisplayCounterparty(record),
+                field === "counterparty" ? query : "",
+              )}{" "}
               · {record.agentName} ·{" "}
+              {getDirectionLabel(record.directionKind ?? null)} ·{" "}
               {formatDate(record.callStartedAt ?? record.startedAt)}
             </p>
           </div>
@@ -165,7 +208,7 @@ function ResultCard({
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
-  const [field, setField] = useState<SearchField>("callTo");
+  const [field, setField] = useState<SearchField>("counterparty");
 
   const { data: records = [] } = useRecords();
   const { data: users = [] } = useUsers();
@@ -175,21 +218,30 @@ export default function SearchPage() {
     [users],
   );
 
+  const searchRecords = useMemo<SearchResultRecord[]>(
+    () => records.map((r) => ({ ...r, agentName: getAgentName(r, userMap) })),
+    [records, userMap],
+  );
+
+  const fuse = useMemo(
+    () =>
+      new Fuse(searchRecords, {
+        keys: [{ name: field, weight: 1 }],
+        threshold: 0.4,
+        includeScore: true,
+        minMatchCharLength: 2,
+        ignoreLocation: true,
+      }),
+    [searchRecords, field],
+  );
+
   const results = useMemo<SearchResultRecord[]>(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
+    const q = query.trim();
+    if (q.length < 2) return [];
+    return fuse.search(q).map(({ item }) => item);
+  }, [fuse, query]);
 
-    return records
-      .map((record) => ({
-        ...record,
-        agentName: getAgentName(record, userMap),
-      }))
-      .filter((record) =>
-        getSearchValue(record, field).toLowerCase().includes(q),
-      );
-  }, [field, query, records, userMap]);
-
-  const hasQuery = query.trim().length > 0;
+  const hasQuery = query.trim().length >= 2;
 
   return (
     <div>
@@ -246,22 +298,24 @@ export default function SearchPage() {
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          <p className="mb-1 text-xs text-neutral-400">
+        <div>
+          <p className="mb-3 text-xs text-neutral-400">
             Найдено результатов:{" "}
             <strong className="text-neutral-700 dark:text-neutral-300">
               {results.length}
             </strong>
           </p>
 
-          {results.map((record) => (
-            <ResultCard
-              key={record.id}
-              record={record}
-              query={query}
-              field={field}
-            />
-          ))}
+          <div className="flex max-h-[calc(100vh-280px)] flex-col gap-3 overflow-y-auto pr-1">
+            {results.map((record) => (
+              <ResultCard
+                key={record.id}
+                record={record}
+                query={query}
+                field={field}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>

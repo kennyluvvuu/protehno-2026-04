@@ -1,24 +1,95 @@
 {
-	# Optional: replace with your real domain to enable automatic HTTPS on :443
-	# Example:
-	# your-domain.com {
-	# 	handle /api/* {
-	# 		reverse_proxy backend:3000
-	# 	}
-	#
-	# 	handle {
-	# 		reverse_proxy frontend:8080
-	# 	}
-	# }
+	auto_https off
+}
 
-	# Default HTTP entrypoint for local usage on port 80
-	http:// {
-		handle /api/* {
-			reverse_proxy backend:3000
-		}
+http://api.localhost {
+	reverse_proxy backend:3000
+}
 
-		handle {
-			reverse_proxy frontend:8080
-		}
+http://manager.localhost {
+	handle_path /api/* {
+		reverse_proxy backend:3000
 	}
+
+	handle {
+		reverse_proxy frontend-manager:3000
+	}
+}
+
+http://director.localhost {
+	handle_path /api/* {
+		reverse_proxy backend:3000
+	}
+
+	handle {
+		reverse_proxy frontend-director:3000
+	}
+}
+
+http://localhost {
+	respond <<HTML
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Connectio</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: #0b1020;
+      color: #f5f7fb;
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+    }
+    .card {
+      width: min(560px, calc(100vw - 32px));
+      background: #121937;
+      border: 1px solid #27305e;
+      border-radius: 16px;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 28px;
+    }
+    p {
+      margin: 0 0 20px;
+      color: #b9c1e0;
+      line-height: 1.5;
+    }
+    .links {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    a {
+      text-decoration: none;
+      color: white;
+      background: #3b82f6;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    a.secondary {
+      background: #1f2937;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Connectio</h1>
+    <p>Выберите интерфейс приложения.</p>
+    <div class="links">
+      <a href="http://manager.localhost">Открыть manager</a>
+      <a href="http://director.localhost">Открыть director</a>
+      <a class="secondary" href="http://api.localhost/health">Проверить API</a>
+    </div>
+  </div>
+</body>
+</html>
+HTML 200
 }

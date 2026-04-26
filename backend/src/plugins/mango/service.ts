@@ -25,7 +25,9 @@ export class MangoIngestionService {
     async handleSummaryEvent(event: MangoSummaryPayload): Promise<void> {
         mangoLog("summary event received", { entry_id: event.entry_id });
 
-        const direction = event.call_direction === 1 ? "inbound" : "outbound";
+        const directionKind =
+            event.call_direction === 1 ? "inbound" : "outbound";
+        const direction = directionKind;
 
         // talkDurationSec === 0 means call was never answered → missed
         const talkDurationSec = event.end_time - event.talk_time;
@@ -43,6 +45,7 @@ export class MangoIngestionService {
         await this.recordService.upsertMangoRecord({
             mangoEntryId: event.entry_id,
             direction,
+            directionKind,
             callerNumber: callerNumber ?? undefined,
             calleeNumber: calleeNumber ?? undefined,
             lineNumber: event.line_number,
@@ -60,6 +63,7 @@ export class MangoIngestionService {
             entry_id: event.entry_id,
             isMissed,
             direction,
+            directionKind,
             talkDurationSec,
         });
     }

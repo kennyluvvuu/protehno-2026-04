@@ -39,8 +39,12 @@ export const recordTable = pgTable("records", {
     mangoUserId: integer("mango_user_id"), // Mango employee user_id from events
 
     // --- CALL METADATA ---
+    // Legacy normalized direction value kept for compatibility
     // "inbound" | "outbound" | "unknown"
     direction: text("direction"),
+    // Explicit direction kind from Mango directional flags
+    // "inbound" | "outbound" | "unknown"
+    directionKind: text("direction_kind"),
     callerNumber: text("caller_number"), // phone number of caller
     calleeNumber: text("callee_number"), // phone number of callee
     lineNumber: text("line_number"), // Mango line/DID number

@@ -1,3 +1,4 @@
+import Fuse from "fuse.js";
 import { FileAudio, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CallDetailSheet } from "~/components/calls/call-detail-sheet";
@@ -7,30 +8,27 @@ import { Input } from "~/components/ui/input";
 import { useRecords } from "~/hooks/useRecords";
 import { useUsers } from "~/hooks/useUsers";
 import { cn } from "~/lib/utils";
-import type { Record } from "~/types/record";
+import type { DirectionKind, Record } from "~/types/record";
 
 interface SearchModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-const FIELDS = [
-  { key: "title" as const, label: "Название" },
-  { key: "callTo" as const, label: "Контрагент" },
-  { key: "transcription" as const, label: "Диалог" },
-  { key: "summary" as const, label: "Суммирование" },
-];
+type SearchRecord = Record & {
+  agentName: string;
+  searchTitle: string;
+  searchCounterparty: string;
+  searchAgentName: string;
+  searchSummary: string;
+  searchTranscription: string;
+  searchDirection: string;
+  searchCallerNumber: string;
+  searchCalleeNumber: string;
+};
 
-function matchRecord(record: Record, q: string): string[] {
-  return FIELDS.filter(({ key }) => {
-    const value = String(record[key] ?? "").toLowerCase();
-    return value.includes(q);
-  }).map(({ label }) => label);
-}
-
-function formatRecordDate(record: Record): string | null {
-  const date = record.callStartedAt ?? record.startedAt ?? record.finishedAt;
-  return date ? new Date(date).toLocaleDateString("ru-RU") : null;
+function getDisplayTitle(record: Record): string {
+  return record.title ?? `Звонок #${record.id}`;
 }
 
 function getAgentName(
@@ -41,9 +39,69 @@ function getAgentName(
   return userMap.get(record.userId);
 }
 
-function getDisplayTitle(record: Record): string {
-  return record.title ?? `Звонок #${record.id}`;
+function formatRecordDate(record: Record): string | null {
+  const date = record.callStartedAt ?? record.startedAt ?? record.finishedAt;
+  return date ? new Date(date).toLocaleDateString("ru-RU") : null;
 }
+
+function getDirectionLabel(directionKind?: DirectionKind | null): string {
+  if (directionKind === "inbound") return "Входящий";
+  if (directionKind === "outbound") return "Исходящий";
+  return "Неизвестно";
+}
+
+function getDisplayCounterparty(record: Record): string {
+  if (record.callTo) return record.callTo;
+
+  if (record.directionKind === "inbound") {
+    return record.callerNumber ?? record.calleeNumber ?? "—";
+  }
+
+  if (record.directionKind === "outbound") {
+    return record.calleeNumber ?? record.callerNumber ?? "—";
+  }
+
+  return record.callerNumber ?? record.calleeNumber ?? "—";
+}
+
+function getDirectionSearchText(record: Record): string {
+  const kind = record.directionKind ?? record.direction ?? "unknown";
+  const normalizedKind =
+    kind === "inbound" || kind === "outbound" || kind === "unknown"
+      ? kind
+      : "unknown";
+  const label = getDirectionLabel(normalizedKind);
+
+  return [
+    normalizedKind,
+    label,
+    label.toLowerCase(),
+    "входящий",
+    "исходящий",
+  ].join(" ");
+}
+
+const FUSE_KEYS: { name: keyof SearchRecord; weight: number }[] = [
+  { name: "searchTitle", weight: 0.28 },
+  { name: "searchCounterparty", weight: 0.24 },
+  { name: "searchAgentName", weight: 0.16 },
+  { name: "searchSummary", weight: 0.1 },
+  { name: "searchTranscription", weight: 0.08 },
+  { name: "searchDirection", weight: 0.08 },
+  { name: "searchCallerNumber", weight: 0.03 },
+  { name: "searchCalleeNumber", weight: 0.03 },
+];
+
+const FIELD_LABELS: Partial<{ [K in keyof SearchRecord]: string }> = {
+  searchTitle: "Название",
+  searchCounterparty: "Контрагент",
+  searchAgentName: "Менеджер",
+  searchSummary: "Суммирование",
+  searchTranscription: "Диалог",
+  searchDirection: "Направление",
+  searchCallerNumber: "Номер звонящего",
+  searchCalleeNumber: "Номер вызываемого",
+};
 
 export function SearchModal({
   open,
@@ -52,6 +110,7 @@ export function SearchModal({
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Record | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const { data: records = [] } = useRecords();
   const { data: users = [] } = useUsers();
@@ -61,32 +120,56 @@ export function SearchModal({
     [users],
   );
 
+  const searchRecords = useMemo<SearchRecord[]>(
+    () =>
+      records.map((record) => {
+        const agentName = getAgentName(record, userMap) ?? "";
+
+        return {
+          ...record,
+          agentName,
+          searchTitle: getDisplayTitle(record),
+          searchCounterparty: getDisplayCounterparty(record),
+          searchAgentName: agentName,
+          searchSummary: record.summary ?? "",
+          searchTranscription: record.transcription ?? "",
+          searchDirection: getDirectionSearchText(record),
+          searchCallerNumber: record.callerNumber ?? "",
+          searchCalleeNumber: record.calleeNumber ?? "",
+        };
+      }),
+    [records, userMap],
+  );
+
+  const fuse = useMemo(
+    () =>
+      new Fuse(searchRecords, {
+        keys: FUSE_KEYS,
+        threshold: 0.4,
+        includeScore: true,
+        includeMatches: true,
+        minMatchCharLength: 2,
+        ignoreLocation: true,
+      }),
+    [searchRecords],
+  );
+
   useEffect(() => {
     if (!open) {
       setQuery("");
       return;
     }
-
     const timer = window.setTimeout(() => inputRef.current?.focus(), 10);
     return () => window.clearTimeout(timer);
   }, [open]);
 
   const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
+    const q = query.trim();
+    if (q.length < 2) return [];
+    return fuse.search(q).slice(0, 20);
+  }, [fuse, query]);
 
-    return records
-      .reduce<{ record: Record; matches: string[] }[]>((acc, record) => {
-        const matches = matchRecord(record, q);
-        if (matches.length > 0) {
-          acc.push({ record, matches });
-        }
-        return acc;
-      }, [])
-      .slice(0, 8);
-  }, [query, records]);
-
-  const hasQuery = query.trim().length > 0;
+  const hasQuery = query.trim().length >= 2;
 
   const handleResultClick = (record: Record): void => {
     onOpenChange(false);
@@ -109,7 +192,7 @@ export function SearchModal({
                 placeholder="Поиск по звонкам…"
                 className="h-10 pl-9 pr-10"
               />
-              {hasQuery && (
+              {query && (
                 <button
                   type="button"
                   onClick={() => setQuery("")}
@@ -125,7 +208,9 @@ export function SearchModal({
           <div className="overflow-y-auto p-3">
             {!hasQuery ? (
               <p className="py-20 text-center text-sm text-muted-foreground">
-                Начните вводить текст
+                {query.length === 1
+                  ? "Введите ещё хотя бы один символ"
+                  : "Начните вводить текст"}
               </p>
             ) : results.length === 0 ? (
               <p className="py-20 text-center text-sm text-muted-foreground">
@@ -133,44 +218,60 @@ export function SearchModal({
               </p>
             ) : (
               <div className="flex flex-col gap-2">
-                {results.map(({ record, matches }) => (
-                  <button
-                    key={record.id}
-                    type="button"
-                    onClick={() => handleResultClick(record)}
-                    className="flex w-full items-start gap-3 rounded-lg border border-border bg-card px-3 py-2 text-left transition-colors hover:bg-accent"
-                  >
-                    <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                      <FileAudio className="size-4 text-muted-foreground" />
-                    </div>
+                <p className="mb-1 px-1 text-xs text-muted-foreground">
+                  Найдено: <strong>{results.length}</strong>
+                </p>
+                {results.map(({ item: record, matches }) => {
+                  const matchedFields = [
+                    ...new Set(
+                      (matches ?? [])
+                        .map((m) => FIELD_LABELS[m.key as keyof SearchRecord])
+                        .filter(Boolean),
+                    ),
+                  ] as string[];
 
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
-                        {getDisplayTitle(record)}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {[
-                          record.callTo,
-                          getAgentName(record, userMap),
-                          formatRecordDate(record),
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {matches.slice(0, 3).map((label) => (
-                          <Badge
-                            key={label}
-                            variant="outline"
-                            className={cn("text-[10px]")}
-                          >
-                            {label}
-                          </Badge>
-                        ))}
+                  return (
+                    <button
+                      key={record.id}
+                      type="button"
+                      onClick={() => handleResultClick(record)}
+                      className="flex w-full items-start gap-3 rounded-lg border border-border bg-card px-3 py-2 text-left transition-colors hover:bg-accent"
+                    >
+                      <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                        <FileAudio className="size-4 text-muted-foreground" />
                       </div>
-                    </div>
-                  </button>
-                ))}
+
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">
+                          {getDisplayTitle(record)}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {[
+                            getDisplayCounterparty(record),
+                            getDirectionLabel(record.directionKind ?? null),
+                            getAgentName(record, userMap),
+                            formatRecordDate(record),
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                        {matchedFields.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {matchedFields.slice(0, 3).map((label) => (
+                              <Badge
+                                key={label}
+                                variant="outline"
+                                className={cn("text-[10px]")}
+                              >
+                                {label}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
