@@ -1,6 +1,7 @@
 import Elysia, { t, type Static } from "elysia";
 import type RecordService from "../records/service";
 import type RecordAiService from "../records/ai-service";
+import { detectAudioDurationSec } from "../records/audio-duration";
 import type UserService from "../user/service";
 import type { IStorage } from "../../storage/interface";
 import { guardPlugin } from "../guard";
@@ -1184,10 +1185,12 @@ class MangoPollingSyncService {
             const storageKey = `mango/${entryId}/${fileName}`;
 
             const fileUri = await this.storage.upload(storageKey, file);
+            const durationSec = await detectAudioDurationSec(fileUri);
             await this.recordService.setMangoAudio(
                 recordId,
                 fileUri,
                 recordingId,
+                durationSec,
             );
 
             this.runAiPipelineInBackground(recordId, fileUri, title);

@@ -1,6 +1,6 @@
 import { api } from "~/lib/axios-client";
 
-export type StatsPeriod = "7d" | "14d" | "30d" | "90d";
+export type StatsPeriod = "7d" | "14d" | "30d" | "90d" | "all";
 
 export type GlobalStatsParams =
   | { period?: StatsPeriod; startDate?: never; endDate?: never }
@@ -28,7 +28,7 @@ export interface StatsByAgentItem {
 }
 
 export interface StatsRange {
-  mode: "period" | "custom";
+  mode: "period" | "custom" | "all";
   period: StatsPeriod | "custom";
   start: string;
   end: string;
@@ -185,27 +185,43 @@ function buildParams(params?: GlobalStatsParams): Record<string, string> {
 
 export const statsApi = {
   getOverview: async (period: StatsPeriod = "7d"): Promise<StatsOverview> => {
-    const { data } = await api.get<StatsOverview>("/stats/overview", { params: { period } });
+    const { data } = await api.get<StatsOverview>("/stats/overview", {
+      params: { period },
+    });
     return data;
   },
 
   getWeekly: async (period: StatsPeriod = "7d"): Promise<WeeklyStatsItem[]> => {
-    const { data } = await api.get<WeeklyStatsItem[]>("/stats/weekly", { params: { period } });
+    const { data } = await api.get<WeeklyStatsItem[]>("/stats/weekly", {
+      params: { period },
+    });
     return data;
   },
 
-  getByAgent: async (period: StatsPeriod = "7d"): Promise<StatsByAgentItem[]> => {
-    const { data } = await api.get<StatsByAgentItem[]>("/stats/by-agent", { params: { period } });
+  getByAgent: async (
+    period: StatsPeriod = "7d",
+  ): Promise<StatsByAgentItem[]> => {
+    const { data } = await api.get<StatsByAgentItem[]>("/stats/by-agent", {
+      params: { period },
+    });
     return data;
   },
 
   getGlobalStats: async (params?: GlobalStatsParams): Promise<GlobalStats> => {
-    const { data } = await api.get<GlobalStats>("/stats/global", { params: buildParams(params) });
+    const { data } = await api.get<GlobalStats>("/stats/global", {
+      params: buildParams(params),
+    });
     return data;
   },
 
-  getAgentDashboard: async (userId: number, params?: GlobalStatsParams): Promise<AgentDashboard> => {
-    const { data } = await api.get<AgentDashboard>(`/stats/agent/${userId}/dashboard`, { params: buildParams(params) });
+  getAgentDashboard: async (
+    userId: number,
+    params?: GlobalStatsParams,
+  ): Promise<AgentDashboard> => {
+    const { data } = await api.get<AgentDashboard>(
+      `/stats/agent/${userId}/dashboard`,
+      { params: buildParams(params) },
+    );
     return data;
   },
 };

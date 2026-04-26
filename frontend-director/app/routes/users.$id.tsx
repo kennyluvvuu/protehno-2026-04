@@ -202,6 +202,7 @@ const PERIOD_OPTIONS: Array<{ value: StatsPeriod; label: string }> = [
   { value: "14d", label: "14 дней" },
   { value: "30d", label: "30 дней" },
   { value: "90d", label: "90 дней" },
+  { value: "all", label: "Все время" },
 ];
 
 function formatDurationSec(sec: number | null): string {
@@ -212,13 +213,26 @@ function formatDurationSec(sec: number | null): string {
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
+  return new Date(iso).toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+  });
 }
 
-function AgentStatItem({ label, value, icon: Icon }: { label: string; value: string | number; icon?: React.ElementType }) {
+function AgentStatItem({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: string | number;
+  icon?: React.ElementType;
+}) {
   return (
     <div className="flex flex-col gap-0.5">
-      <p className="text-[10px] uppercase tracking-wide text-neutral-400">{label}</p>
+      <p className="text-[10px] uppercase tracking-wide text-neutral-400">
+        {label}
+      </p>
       <p className="text-xl font-semibold tracking-tight flex items-center gap-1">
         {Icon && <Icon className="size-3.5 text-neutral-400" />}
         {value}
@@ -234,7 +248,9 @@ export default function UserDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
-  const [resetPasswordError, setResetPasswordError] = useState<string | null>(null);
+  const [resetPasswordError, setResetPasswordError] = useState<string | null>(
+    null,
+  );
   const [analyticsPeriod, setAnalyticsPeriod] = useState<StatsPeriod>("7d");
 
   const { data: users = [], isLoading: usersLoading } = useUsers();
@@ -300,13 +316,14 @@ export default function UserDetailPage() {
   } = usePagination(userRecords);
 
   const trendData = useMemo(
-    () => (agentDashboard?.trend ?? []).map((t) => ({
-      day: formatDate(t.date),
-      total: t.total,
-      done: t.done,
-      failed: t.failed,
-      missed: t.missed,
-    })),
+    () =>
+      (agentDashboard?.trend ?? []).map((t) => ({
+        day: formatDate(t.date),
+        total: t.total,
+        done: t.done,
+        failed: t.failed,
+        missed: t.missed,
+      })),
     [agentDashboard],
   );
 
@@ -445,13 +462,18 @@ export default function UserDetailPage() {
           <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-sm font-medium">Аналитика</CardTitle>
             <div className="w-36">
-              <Select value={analyticsPeriod} onValueChange={(v) => setAnalyticsPeriod(v as StatsPeriod)}>
+              <Select
+                value={analyticsPeriod}
+                onValueChange={(v) => setAnalyticsPeriod(v as StatsPeriod)}
+              >
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue placeholder="Период" />
                 </SelectTrigger>
                 <SelectContent>
                   {PERIOD_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -469,14 +491,49 @@ export default function UserDetailPage() {
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                <AgentStatItem label="Всего" value={agentDashboard?.overview.totalRecords ?? 0} icon={FileAudio} />
-                <AgentStatItem label="Выполнено" value={agentDashboard?.overview.doneRecords ?? 0} icon={TrendingUp} />
-                <AgentStatItem label="Ошибки" value={agentDashboard?.overview.failedRecords ?? 0} />
-                <AgentStatItem label="Средний балл" value={formatQuality(agentDashboard?.overview.avgQualityScore ?? null)} icon={Activity} />
-                <AgentStatItem label="Пропущено" value={agentDashboard?.overview.missedRecords ?? 0} icon={PhoneMissed} />
-                <AgentStatItem label="Нет аудио" value={agentDashboard?.overview.noAudioRecords ?? 0} />
-                <AgentStatItem label="Ср. длит." value={formatDurationSec(agentDashboard?.overview.avgTalkDurationSec ?? null)} icon={Clock} />
-                <AgentStatItem label="Ср. обработка" value={formatDurationSec(agentDashboard?.overview.avgProcessingDurationSec ?? null)} />
+                <AgentStatItem
+                  label="Всего"
+                  value={agentDashboard?.overview.totalRecords ?? 0}
+                  icon={FileAudio}
+                />
+                <AgentStatItem
+                  label="Выполнено"
+                  value={agentDashboard?.overview.doneRecords ?? 0}
+                  icon={TrendingUp}
+                />
+                <AgentStatItem
+                  label="Ошибки"
+                  value={agentDashboard?.overview.failedRecords ?? 0}
+                />
+                <AgentStatItem
+                  label="Средний балл"
+                  value={formatQuality(
+                    agentDashboard?.overview.avgQualityScore ?? null,
+                  )}
+                  icon={Activity}
+                />
+                <AgentStatItem
+                  label="Пропущено"
+                  value={agentDashboard?.overview.missedRecords ?? 0}
+                  icon={PhoneMissed}
+                />
+                <AgentStatItem
+                  label="Нет аудио"
+                  value={agentDashboard?.overview.noAudioRecords ?? 0}
+                />
+                <AgentStatItem
+                  label="Ср. длит."
+                  value={formatDurationSec(
+                    agentDashboard?.overview.avgTalkDurationSec ?? null,
+                  )}
+                  icon={Clock}
+                />
+                <AgentStatItem
+                  label="Ср. обработка"
+                  value={formatDurationSec(
+                    agentDashboard?.overview.avgProcessingDurationSec ?? null,
+                  )}
+                />
               </div>
             )}
           </CardContent>
@@ -600,30 +657,34 @@ export default function UserDetailPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-red-700 dark:text-red-400">
-              Опасная зона
-            </CardTitle>
-          </CardHeader>
-
-          <CardContent>
-            <Button
-              type="button"
-              variant="outline"
-              className="gap-2 border-red-200 bg-white text-red-700 hover:border-red-300 hover:bg-red-100 hover:text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-400 dark:hover:border-red-700 dark:hover:bg-red-950/60 dark:hover:text-red-300"
-              onClick={() => setDeleteOpen(true)}
-              disabled={deleteUser.isPending}
-            >
-              {deleteUser.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Trash2 className="size-4" />
-              )}
-              Удалить менеджера
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="mt-8">
+          <h2 className="mb-4 text-xl font-semibold">Опасная зона</h2>
+          <div className="rounded-md border border-red-500/50">
+            <div className="flex flex-col items-start justify-between gap-4 p-4 sm:flex-row sm:items-center">
+              <div>
+                <h3 className="font-semibold text-sm">
+                  Удалить этого пользователя
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Как только вы удалите пользователя, пути назад не будет.
+                  Пожалуйста, будьте уверены.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2 text-red-600 hover:bg-red-600 hover:text-white dark:text-red-500 dark:hover:bg-red-600 dark:hover:text-white"
+                onClick={() => setDeleteOpen(true)}
+                disabled={deleteUser.isPending}
+              >
+                {deleteUser.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : null}
+                Удалить менеджера
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Trend chart */}
@@ -640,18 +701,58 @@ export default function UserDetailPage() {
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip
                   contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                  formatter={(v: number, name: string) => [v, { total: "Всего", done: "Выполнено", failed: "Ошибки", missed: "Пропущено" }[name] ?? name]}
+                  formatter={(v: number, name: string) => [
+                    v,
+                    {
+                      total: "Всего",
+                      done: "Выполнено",
+                      failed: "Ошибки",
+                      missed: "Пропущено",
+                    }[name] ?? name,
+                  ]}
                 />
-                <Line type="monotone" dataKey="total" stroke="#64748b" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="done" stroke="#22c55e" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="failed" stroke="#ef4444" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="missed" stroke="#f97316" strokeWidth={2} dot={false} />
+                <Line
+                  type="monotone"
+                  dataKey="total"
+                  stroke="#64748b"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="done"
+                  stroke="#22c55e"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="failed"
+                  stroke="#ef4444"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="missed"
+                  stroke="#f97316"
+                  strokeWidth={2}
+                  dot={false}
+                />
               </LineChart>
             </ResponsiveContainer>
             <div className="mt-2 flex flex-wrap gap-4 text-xs text-neutral-500">
-              {[{ color: "#64748b", label: "Всего" }, { color: "#22c55e", label: "Выполнено" }, { color: "#ef4444", label: "Ошибки" }, { color: "#f97316", label: "Пропущено" }].map((l) => (
+              {[
+                { color: "#64748b", label: "Всего" },
+                { color: "#22c55e", label: "Выполнено" },
+                { color: "#ef4444", label: "Ошибки" },
+                { color: "#f97316", label: "Пропущено" },
+              ].map((l) => (
                 <span key={l.label} className="flex items-center gap-1">
-                  <span className="inline-block size-2 rounded-full" style={{ background: l.color }} />
+                  <span
+                    className="inline-block size-2 rounded-full"
+                    style={{ background: l.color }}
+                  />
                   {l.label}
                 </span>
               ))}

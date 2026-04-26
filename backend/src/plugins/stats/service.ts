@@ -1,4 +1,14 @@
-import { and, count, eq, gte, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import {
+    and,
+    count,
+    eq,
+    gte,
+    isNotNull,
+    isNull,
+    lt,
+    or,
+    sql,
+} from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { recordTable } from "../records/model";
 import { userTable } from "../user/model";
@@ -11,10 +21,12 @@ type StatsOverview = {
     totalManagers: number;
 };
 
-type StatsPeriod = "7d" | "14d" | "30d" | "90d";
+type StatsPeriod = "7d" | "14d" | "30d" | "90d" | "all";
 
 const normalizePeriod = (period?: string): StatsPeriod =>
-    period === "14d" || period === "30d" || period === "90d" ? period : "7d";
+    period === "14d" || period === "30d" || period === "90d" || period === "all"
+        ? period
+        : "7d";
 
 const getPeriodRange = (period?: string) => {
     const normalizedPeriod = normalizePeriod(period);
@@ -43,7 +55,7 @@ type StatsQueryOptions = {
 };
 
 type StatsRange = {
-    mode: "period" | "custom";
+    mode: "period" | "custom" | "all";
     period: StatsPeriod | "custom";
     days: number;
     start: Date;
@@ -152,7 +164,7 @@ type DashboardOverview = StatsOverview & {
 
 type GlobalStatsDashboard = {
     range: {
-        mode: "period" | "custom";
+        mode: "period" | "custom" | "all";
         period: StatsPeriod | "custom";
         start: string;
         end: string;
@@ -171,7 +183,7 @@ type GlobalStatsDashboard = {
 
 type AgentStatsDashboard = {
     range: {
-        mode: "period" | "custom";
+        mode: "period" | "custom" | "all";
         period: StatsPeriod | "custom";
         start: string;
         end: string;
@@ -189,17 +201,25 @@ type AgentStatsDashboard = {
 export class StatsService {
     constructor(private readonly db: NodePgDatabase) {}
 
-    private readonly activityAt =
-        sql`coalesce(${recordTable.callStartedAt}, ${recordTable.callEndedAt}, ${recordTable.callAnsweredAt}, ${recordTable.finishedAt}, ${recordTable.startedAt})`;
+    private readonly activityAt = sql`coalesce(${recordTable.callStartedAt}, ${recordTable.callEndedAt}, ${recordTable.callAnsweredAt}, ${recordTable.finishedAt}, ${recordTable.startedAt})`;
 
-    private readonly missedCondition =
-        sql`${recordTable.isMissed} = true or ${recordTable.ingestionStatus} = 'no_audio' or ${recordTable.talkDurationSec} = 0`;
+    private readonly missedCondition = sql`${recordTable.isMissed} = true or ${recordTable.ingestionStatus} = 'no_audio' or (${recordTable.talkDurationSec} = 0 and ${recordTable.callAnsweredAt} is null)`;
+
+    // "done" for dashboards should mean a completed conversation, not only AI status.
+    private readonly completedCondition = sql`${recordTable.talkDurationSec} > 0 or ${recordTable.callAnsweredAt} is not null or ${recordTable.status} = 'done'`;
 
     private buildInRangeCondition(start: Date, end: Date) {
         return or(
             and(gte(this.activityAt, start), lt(this.activityAt, end)),
-            and(this.missedCondition, sql`${this.activityAt} is null`),
+            sql`${this.activityAt} is null`,
         )!;
+    }
+
+    private buildRangeCondition(range: StatsRange) {
+        if (range.mode === "all") {
+            return sql`true`;
+        }
+        return this.buildInRangeCondition(range.start, range.end);
     }
 
     private buildAgentOwnershipCondition(
@@ -264,6 +284,16 @@ export class StatsService {
             };
         }
 
+        if (options?.period === "all") {
+            return {
+                mode: "all",
+                period: "all",
+                days: 0,
+                start: new Date(0),
+                end: new Date("2100-12-31T23:59:59.999Z"),
+            };
+        }
+
         const periodRange = getPeriodRange(options?.period);
         return {
             mode: "period",
@@ -296,13 +326,13 @@ export class StatsService {
     }
 
     async getOverview(period?: string): Promise<StatsOverview> {
-        const { start, end } = this.resolveRange({ period });
-        const inRange = this.buildInRangeCondition(start, end);
+        const range = this.resolveRange({ period });
+        const inRange = this.buildRangeCondition(range);
 
         const [recordsAggregate] = await this.db
             .select({
                 totalRecords: count(recordTable.id),
-                doneRecords: sql<number>`count(*) filter (where ${recordTable.status} = 'done')`,
+                doneRecords: sql<number>`count(*) filter (where ${this.completedCondition})`,
                 failedRecords: sql<number>`count(*) filter (where ${recordTable.status} = 'failed')`,
                 avgQualityScore: sql<
                     number | null
@@ -332,14 +362,16 @@ export class StatsService {
     }
 
     async getWeekly(period?: string): Promise<WeeklyStatsItem[]> {
-        const { days, start, end } = this.resolveRange({ period });
+        const range = this.resolveRange({ period });
+        if (range.mode === "all") return [];
+        const { days, start, end } = range;
         const inRange = this.buildInRangeCondition(start, end);
 
         const rows = await this.db
             .select({
                 date: sql<string>`to_char(date_trunc('day', ${this.activityAt}), 'YYYY-MM-DD')`,
                 total: count(recordTable.id),
-                done: sql<number>`count(*) filter (where ${recordTable.status} = 'done')`,
+                done: sql<number>`count(*) filter (where ${this.completedCondition})`,
             })
             .from(recordTable)
             .where(inRange)
@@ -377,8 +409,8 @@ export class StatsService {
     }
 
     async getByAgent(period?: string): Promise<AgentStatsItem[]> {
-        const { start, end } = this.resolveRange({ period });
-        const inRange = this.buildInRangeCondition(start, end);
+        const range = this.resolveRange({ period });
+        const inRange = this.buildRangeCondition(range);
 
         const rows = await this.db
             .select({
@@ -386,12 +418,12 @@ export class StatsService {
                 fio: userTable.fio,
                 name: userTable.name,
                 total: count(recordTable.id),
-                done: sql<number>`count(*) filter (where ${recordTable.status} = 'done')`,
+                done: sql<number>`count(*) filter (where ${this.completedCondition})`,
                 failed: sql<number>`count(*) filter (where ${recordTable.status} = 'failed')`,
                 missed: sql<number>`count(*) filter (where ${this.missedCondition})`,
                 avgTalkDurationSec: sql<
                     number | null
-                >`round(avg(${recordTable.talkDurationSec})::numeric, 1)`,
+                >`round(avg(${recordTable.talkDurationSec}) filter (where ${this.completedCondition})::numeric, 1)`,
                 avgQualityScore: sql<
                     number | null
                 >`round(avg(${recordTable.qualityScore})::numeric, 1)`,
@@ -439,12 +471,12 @@ export class StatsService {
         options?: StatsQueryOptions,
     ): Promise<GlobalStatsDashboard> {
         const range = this.resolveRange(options);
-        const inRange = this.buildInRangeCondition(range.start, range.end);
+        const inRange = this.buildRangeCondition(range);
 
         const [overviewRow] = await this.db
             .select({
                 totalRecords: count(recordTable.id),
-                doneRecords: sql<number>`count(*) filter (where ${recordTable.status} = 'done')`,
+                doneRecords: sql<number>`count(*) filter (where ${this.completedCondition})`,
                 failedRecords: sql<number>`count(*) filter (where ${recordTable.status} = 'failed')`,
                 queuedRecords: sql<number>`count(*) filter (where ${recordTable.status} = 'queued')`,
                 processingRecords: sql<number>`count(*) filter (where ${recordTable.status} = 'processing')`,
@@ -459,7 +491,7 @@ export class StatsService {
                 >`round(avg(${recordTable.qualityScore})::numeric, 1)`,
                 avgTalkDurationSec: sql<
                     number | null
-                >`round(avg(${recordTable.talkDurationSec})::numeric, 1)`,
+                >`round(avg(${recordTable.talkDurationSec}) filter (where ${this.completedCondition})::numeric, 1)`,
                 avgProcessingDurationSec: sql<
                     number | null
                 >`round(avg(extract(epoch from (${recordTable.finishedAt} - ${recordTable.startedAt})))::numeric, 1)`,
@@ -478,7 +510,7 @@ export class StatsService {
             .select({
                 source: sql<string>`coalesce(${recordTable.source}, 'unknown')`,
                 total: count(recordTable.id),
-                done: sql<number>`count(*) filter (where ${recordTable.status} = 'done')`,
+                done: sql<number>`count(*) filter (where ${this.completedCondition})`,
                 failed: sql<number>`count(*) filter (where ${recordTable.status} = 'failed')`,
                 inProgress: sql<number>`count(*) filter (where ${recordTable.status} in ('uploaded', 'queued', 'processing'))`,
                 missed: sql<number>`count(*) filter (where ${this.missedCondition})`,
@@ -496,7 +528,7 @@ export class StatsService {
             .select({
                 direction: sql<string>`coalesce(${recordTable.directionKind}, ${recordTable.direction}, 'unknown')`,
                 total: count(recordTable.id),
-                done: sql<number>`count(*) filter (where ${recordTable.status} = 'done')`,
+                done: sql<number>`count(*) filter (where ${this.completedCondition})`,
                 failed: sql<number>`count(*) filter (where ${recordTable.status} = 'failed')`,
                 missed: sql<number>`count(*) filter (where ${this.missedCondition})`,
                 avgQualityScore: sql<
@@ -540,22 +572,25 @@ export class StatsService {
             .from(recordTable)
             .where(inRange);
 
-        const dailyRows = await this.db
-            .select({
-                date: sql<string>`to_char(date_trunc('day', ${this.activityAt}), 'YYYY-MM-DD')`,
-                total: count(recordTable.id),
-                done: sql<number>`count(*) filter (where ${recordTable.status} = 'done')`,
-                failed: sql<number>`count(*) filter (where ${recordTable.status} = 'failed')`,
-                missed: sql<number>`count(*) filter (where ${this.missedCondition})`,
-                noAudio: sql<number>`count(*) filter (where ${recordTable.hasAudio} = false or ${recordTable.ingestionStatus} = 'no_audio')`,
-                avgQualityScore: sql<
-                    number | null
-                >`round(avg(${recordTable.qualityScore})::numeric, 1)`,
-            })
-            .from(recordTable)
-            .where(inRange)
-            .groupBy(sql`date_trunc('day', ${this.activityAt})`)
-            .orderBy(sql`date_trunc('day', ${this.activityAt}) asc`);
+        const dailyRows =
+            range.mode === "all"
+                ? []
+                : await this.db
+                      .select({
+                          date: sql<string>`to_char(date_trunc('day', ${this.activityAt}), 'YYYY-MM-DD')`,
+                          total: count(recordTable.id),
+                          done: sql<number>`count(*) filter (where ${this.completedCondition})`,
+                          failed: sql<number>`count(*) filter (where ${recordTable.status} = 'failed')`,
+                          missed: sql<number>`count(*) filter (where ${this.missedCondition})`,
+                          noAudio: sql<number>`count(*) filter (where ${recordTable.hasAudio} = false or ${recordTable.ingestionStatus} = 'no_audio')`,
+                          avgQualityScore: sql<
+                              number | null
+                          >`round(avg(${recordTable.qualityScore})::numeric, 1)`,
+                      })
+                      .from(recordTable)
+                      .where(inRange)
+                      .groupBy(sql`date_trunc('day', ${this.activityAt})`)
+                      .orderBy(sql`date_trunc('day', ${this.activityAt}) asc`);
 
         const [operationalRow] = await this.db
             .select({
@@ -588,7 +623,9 @@ export class StatsService {
         const byAgent =
             range.mode === "period"
                 ? await this.getByAgent(range.period)
-                : await this.getByAgentForRange(range.start, range.end);
+                : range.mode === "all"
+                  ? await this.getByAgent("all")
+                  : await this.getByAgentForRange(range.start, range.end);
 
         return {
             range: {
@@ -607,7 +644,9 @@ export class StatsService {
                 ),
                 totalManagers: this.toNumber(managersAggregate?.totalManagers),
                 queuedRecords: this.toNumber(overviewRow?.queuedRecords),
-                processingRecords: this.toNumber(overviewRow?.processingRecords),
+                processingRecords: this.toNumber(
+                    overviewRow?.processingRecords,
+                ),
                 uploadedRecords: this.toNumber(overviewRow?.uploadedRecords),
                 notApplicableRecords: this.toNumber(
                     overviewRow?.notApplicableRecords,
@@ -615,7 +654,9 @@ export class StatsService {
                 missedRecords: this.toNumber(overviewRow?.missedRecords),
                 noAudioRecords: this.toNumber(overviewRow?.noAudioRecords),
                 withAudioRecords: this.toNumber(overviewRow?.withAudioRecords),
-                unassignedRecords: this.toNumber(overviewRow?.unassignedRecords),
+                unassignedRecords: this.toNumber(
+                    overviewRow?.unassignedRecords,
+                ),
                 avgTalkDurationSec: this.toNullableNumber(
                     overviewRow?.avgTalkDurationSec,
                 ),
@@ -658,8 +699,12 @@ export class StatsService {
             trend: Array.from(trendMap.values()),
             byAgent,
             operational: {
-                mangoPendingAudio: this.toNumber(operationalRow?.mangoPendingAudio),
-                mangoDownloading: this.toNumber(operationalRow?.mangoDownloading),
+                mangoPendingAudio: this.toNumber(
+                    operationalRow?.mangoPendingAudio,
+                ),
+                mangoDownloading: this.toNumber(
+                    operationalRow?.mangoDownloading,
+                ),
                 mangoReady: this.toNumber(operationalRow?.mangoReady),
                 mangoNoAudio: this.toNumber(operationalRow?.mangoNoAudio),
                 mangoIngestionFailed: this.toNumber(
@@ -678,14 +723,17 @@ export class StatsService {
     ): Promise<AgentStatsDashboard> {
         const range = this.resolveRange(options);
         const inRange = and(
-            this.buildAgentOwnershipCondition(options.userId, options.mangoUserId),
-            this.buildInRangeCondition(range.start, range.end),
+            this.buildAgentOwnershipCondition(
+                options.userId,
+                options.mangoUserId,
+            ),
+            this.buildRangeCondition(range),
         );
 
         const [overviewRow] = await this.db
             .select({
                 totalRecords: count(recordTable.id),
-                doneRecords: sql<number>`count(*) filter (where ${recordTable.status} = 'done')`,
+                doneRecords: sql<number>`count(*) filter (where ${this.completedCondition})`,
                 failedRecords: sql<number>`count(*) filter (where ${recordTable.status} = 'failed')`,
                 queuedRecords: sql<number>`count(*) filter (where ${recordTable.status} = 'queued')`,
                 processingRecords: sql<number>`count(*) filter (where ${recordTable.status} = 'processing')`,
@@ -699,7 +747,7 @@ export class StatsService {
                 >`round(avg(${recordTable.qualityScore})::numeric, 1)`,
                 avgTalkDurationSec: sql<
                     number | null
-                >`round(avg(${recordTable.talkDurationSec})::numeric, 1)`,
+                >`round(avg(${recordTable.talkDurationSec}) filter (where ${this.completedCondition})::numeric, 1)`,
                 avgProcessingDurationSec: sql<
                     number | null
                 >`round(avg(extract(epoch from (${recordTable.finishedAt} - ${recordTable.startedAt})))::numeric, 1)`,
@@ -711,7 +759,7 @@ export class StatsService {
             .select({
                 source: sql<string>`coalesce(${recordTable.source}, 'unknown')`,
                 total: count(recordTable.id),
-                done: sql<number>`count(*) filter (where ${recordTable.status} = 'done')`,
+                done: sql<number>`count(*) filter (where ${this.completedCondition})`,
                 failed: sql<number>`count(*) filter (where ${recordTable.status} = 'failed')`,
                 inProgress: sql<number>`count(*) filter (where ${recordTable.status} in ('uploaded', 'queued', 'processing'))`,
                 missed: sql<number>`count(*) filter (where ${this.missedCondition})`,
@@ -729,7 +777,7 @@ export class StatsService {
             .select({
                 direction: sql<string>`coalesce(${recordTable.directionKind}, ${recordTable.direction}, 'unknown')`,
                 total: count(recordTable.id),
-                done: sql<number>`count(*) filter (where ${recordTable.status} = 'done')`,
+                done: sql<number>`count(*) filter (where ${this.completedCondition})`,
                 failed: sql<number>`count(*) filter (where ${recordTable.status} = 'failed')`,
                 missed: sql<number>`count(*) filter (where ${this.missedCondition})`,
                 avgQualityScore: sql<
@@ -763,22 +811,25 @@ export class StatsService {
             .groupBy(sql`coalesce(${recordTable.ingestionStatus}, 'unknown')`)
             .orderBy(sql`count(${recordTable.id}) desc`);
 
-        const dailyRows = await this.db
-            .select({
-                date: sql<string>`to_char(date_trunc('day', ${this.activityAt}), 'YYYY-MM-DD')`,
-                total: count(recordTable.id),
-                done: sql<number>`count(*) filter (where ${recordTable.status} = 'done')`,
-                failed: sql<number>`count(*) filter (where ${recordTable.status} = 'failed')`,
-                missed: sql<number>`count(*) filter (where ${this.missedCondition})`,
-                noAudio: sql<number>`count(*) filter (where ${recordTable.hasAudio} = false or ${recordTable.ingestionStatus} = 'no_audio')`,
-                avgQualityScore: sql<
-                    number | null
-                >`round(avg(${recordTable.qualityScore})::numeric, 1)`,
-            })
-            .from(recordTable)
-            .where(inRange)
-            .groupBy(sql`date_trunc('day', ${this.activityAt})`)
-            .orderBy(sql`date_trunc('day', ${this.activityAt}) asc`);
+        const dailyRows =
+            range.mode === "all"
+                ? []
+                : await this.db
+                      .select({
+                          date: sql<string>`to_char(date_trunc('day', ${this.activityAt}), 'YYYY-MM-DD')`,
+                          total: count(recordTable.id),
+                          done: sql<number>`count(*) filter (where ${this.completedCondition})`,
+                          failed: sql<number>`count(*) filter (where ${recordTable.status} = 'failed')`,
+                          missed: sql<number>`count(*) filter (where ${this.missedCondition})`,
+                          noAudio: sql<number>`count(*) filter (where ${recordTable.hasAudio} = false or ${recordTable.ingestionStatus} = 'no_audio')`,
+                          avgQualityScore: sql<
+                              number | null
+                          >`round(avg(${recordTable.qualityScore})::numeric, 1)`,
+                      })
+                      .from(recordTable)
+                      .where(inRange)
+                      .groupBy(sql`date_trunc('day', ${this.activityAt})`)
+                      .orderBy(sql`date_trunc('day', ${this.activityAt}) asc`);
 
         const [operationalRow] = await this.db
             .select({
@@ -823,7 +874,9 @@ export class StatsService {
                     overviewRow?.avgQualityScore,
                 ),
                 queuedRecords: this.toNumber(overviewRow?.queuedRecords),
-                processingRecords: this.toNumber(overviewRow?.processingRecords),
+                processingRecords: this.toNumber(
+                    overviewRow?.processingRecords,
+                ),
                 uploadedRecords: this.toNumber(overviewRow?.uploadedRecords),
                 notApplicableRecords: this.toNumber(
                     overviewRow?.notApplicableRecords,
@@ -866,8 +919,12 @@ export class StatsService {
             })),
             trend: Array.from(trendMap.values()),
             operational: {
-                mangoPendingAudio: this.toNumber(operationalRow?.mangoPendingAudio),
-                mangoDownloading: this.toNumber(operationalRow?.mangoDownloading),
+                mangoPendingAudio: this.toNumber(
+                    operationalRow?.mangoPendingAudio,
+                ),
+                mangoDownloading: this.toNumber(
+                    operationalRow?.mangoDownloading,
+                ),
                 mangoReady: this.toNumber(operationalRow?.mangoReady),
                 mangoNoAudio: this.toNumber(operationalRow?.mangoNoAudio),
                 mangoIngestionFailed: this.toNumber(
@@ -891,12 +948,12 @@ export class StatsService {
                 fio: userTable.fio,
                 name: userTable.name,
                 total: count(recordTable.id),
-                done: sql<number>`count(*) filter (where ${recordTable.status} = 'done')`,
+                done: sql<number>`count(*) filter (where ${this.completedCondition})`,
                 failed: sql<number>`count(*) filter (where ${recordTable.status} = 'failed')`,
                 missed: sql<number>`count(*) filter (where ${this.missedCondition})`,
                 avgTalkDurationSec: sql<
                     number | null
-                >`round(avg(${recordTable.talkDurationSec})::numeric, 1)`,
+                >`round(avg(${recordTable.talkDurationSec}) filter (where ${this.completedCondition})::numeric, 1)`,
                 avgQualityScore: sql<
                     number | null
                 >`round(avg(${recordTable.qualityScore})::numeric, 1)`,

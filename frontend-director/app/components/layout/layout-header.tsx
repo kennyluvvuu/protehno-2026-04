@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import { SearchModal } from "~/components/layout/search-modal";
 import { NotificationsBell } from "~/components/layout/notifications";
+import { HealthCheck } from "~/components/layout/health-check";
 
 interface LayoutHeaderProps {
   isSidebarCollapsed: boolean;
@@ -17,28 +18,28 @@ export function LayoutHeader({
 
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-      <div className="flex h-14 items-center pl-1 pr-6">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={onToggleSidebar}
-          aria-label={
-            isSidebarCollapsed
-              ? "Развернуть боковую панель"
-              : "Свернуть боковую панель"
-          }
-        >
-          {isSidebarCollapsed ? (
-            <ChevronRight className="size-4" />
-          ) : (
-            <ChevronLeft className="size-4" />
-          )}
-        </Button>
+      <div className="flex h-14 items-center justify-between pl-1 pr-6">
+        <div className="flex flex-1 items-center">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onToggleSidebar}
+            aria-label={
+              isSidebarCollapsed
+                ? "Развернуть боковую панель"
+                : "Свернуть боковую панель"
+            }
+          >
+            {isSidebarCollapsed ? (
+              <ChevronRight className="size-4" />
+            ) : (
+              <ChevronLeft className="size-4" />
+            )}
+          </Button>
+        </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          <NotificationsBell />
-
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setIsSearchOpen(true)}
@@ -48,6 +49,11 @@ export function LayoutHeader({
             <Search className="size-3.5" />
             <span className="truncate">Поиск по звонкам и пользователям</span>
           </button>
+        </div>
+
+        <div className="flex flex-1 items-center justify-end gap-2">
+          <NotificationsBell />
+          <HealthCheck />
         </div>
       </div>
 

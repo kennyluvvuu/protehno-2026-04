@@ -129,7 +129,6 @@ export default function TasksPage(): React.ReactElement {
       <PageHeader
         title="Задачи"
         description="Текущие задачи по звонкам"
-        healthStatus={health?.status}
         actions={<Badge variant="outline">{activeTasksCount} активных</Badge>}
       />
 
