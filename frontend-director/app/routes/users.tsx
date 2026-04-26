@@ -1,3 +1,4 @@
+import Fuse from "fuse.js";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -41,6 +42,15 @@ import type { User } from "~/types/auth";
 type SortField = "name" | "email";
 type SortDir = "asc" | "desc";
 
+const USER_SEARCH_KEYS: Array<{ name: keyof UserSearchItem; weight: number }> =
+  [
+    { name: "displayName", weight: 0.35 },
+    { name: "searchFio", weight: 0.2 },
+    { name: "name", weight: 0.15 },
+    { name: "email", weight: 0.2 },
+    { name: "searchMangoUserId", weight: 0.1 },
+  ];
+
 const createManagerSchema = createUserSchema.extend({
   fio: z.string().trim().optional(),
   mangoUserId: z.string().trim().optional(),
@@ -52,6 +62,12 @@ type CreateManagerFormValues = {
   password: string;
   fio?: string;
   mangoUserId?: string;
+};
+
+type UserSearchItem = User & {
+  displayName: string;
+  searchFio: string;
+  searchMangoUserId: string;
 };
 
 function getDisplayName(user: Pick<User, "name" | "fio">): string {
@@ -229,26 +245,36 @@ export default function UsersPage() {
   });
   const [addOpen, setAddOpen] = useState(false);
 
+  const searchItems = useMemo<UserSearchItem[]>(
+    () =>
+      users.map((user) => ({
+        ...user,
+        displayName: getDisplayName(user),
+        searchFio: user.fio ?? "",
+        searchMangoUserId:
+          user.mangoUserId != null ? String(user.mangoUserId) : "",
+      })),
+    [users],
+  );
+
+  const fuse = useMemo(
+    () =>
+      new Fuse(searchItems, {
+        keys: USER_SEARCH_KEYS,
+        threshold: 0.4,
+        ignoreLocation: true,
+        minMatchCharLength: 2,
+      }),
+    [searchItems],
+  );
+
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const query = search.trim();
 
-    let list = users.filter((user) => {
-      const displayName = getDisplayName(user).toLowerCase();
-      const fio = (user.fio ?? "").toLowerCase();
-      const name = user.name.toLowerCase();
-      const email = user.email.toLowerCase();
-      const mangoUserId =
-        user.mangoUserId != null ? String(user.mangoUserId) : "";
-
-      return (
-        !q ||
-        displayName.includes(q) ||
-        fio.includes(q) ||
-        name.includes(q) ||
-        email.includes(q) ||
-        mangoUserId.includes(q)
-      );
-    });
+    let list =
+      query.length < 2
+        ? searchItems
+        : fuse.search(query).map((result) => result.item);
 
     list = [...list].sort((a, b) => {
       const dir = sort.dir === "asc" ? 1 : -1;
@@ -261,7 +287,7 @@ export default function UsersPage() {
     });
 
     return list;
-  }, [users, search, sort]);
+  }, [fuse, search, searchItems, sort]);
 
   const { page, totalPages, pageItems, setPage } = usePagination(filtered);
 
@@ -342,9 +368,15 @@ export default function UsersPage() {
                       <Skeleton className="h-4 w-32" />
                     </div>
                   </TableCell>
-                  <TableCell><Skeleton className="h-4 w-40" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-40" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-16" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                  </TableCell>
                 </TableRow>
               ))
             ) : filtered.length === 0 ? (
@@ -422,7 +454,11 @@ export default function UsersPage() {
         <p className="text-xs text-neutral-400">
           {filtered.length} из {users.length} пользователей
         </p>
-        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+        />
       </div>
 
       <AddUserDialog open={addOpen} onClose={() => setAddOpen(false)} />

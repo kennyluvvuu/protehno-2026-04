@@ -1,3 +1,4 @@
+import Fuse from "fuse.js";
 import { useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
@@ -37,7 +38,13 @@ import { usePagination } from "~/hooks/usePagination";
 import { useRecords } from "~/hooks/useRecords";
 import { useUsers } from "~/hooks/useUsers";
 import { cn } from "~/lib/utils";
-import type { Record, RecordStatus, SortDir, SortField } from "~/types/record";
+import type {
+  DirectionKind,
+  Record,
+  RecordStatus,
+  SortDir,
+  SortField,
+} from "~/types/record";
 
 type StatusFilter = RecordStatus | "all";
 
@@ -50,10 +57,47 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "failed", label: "Ошибка" },
 ];
 
+type SearchableRecord = Record & {
+  agentName: string;
+  searchText: string;
+};
+
+const FUSE_KEYS: { name: keyof SearchableRecord; weight: number }[] = [
+  { name: "title", weight: 0.28 },
+  { name: "callTo", weight: 0.2 },
+  { name: "agentName", weight: 0.16 },
+  { name: "summary", weight: 0.12 },
+  { name: "transcription", weight: 0.1 },
+  { name: "callerNumber", weight: 0.05 },
+  { name: "calleeNumber", weight: 0.05 },
+  { name: "directionKind", weight: 0.02 },
+  { name: "source", weight: 0.02 },
+];
+
 function formatDuration(sec: number): string {
   const minutes = Math.floor(sec / 60);
   const seconds = sec % 60;
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function getDirectionLabel(directionKind?: DirectionKind | null): string {
+  if (directionKind === "inbound") return "Входящий";
+  if (directionKind === "outbound") return "Исходящий";
+  return "Неизвестно";
+}
+
+function getDisplayCounterparty(record: Record): string {
+  if (record.callTo) return record.callTo;
+
+  if (record.directionKind === "inbound") {
+    return record.callerNumber ?? record.calleeNumber ?? "—";
+  }
+
+  if (record.directionKind === "outbound") {
+    return record.calleeNumber ?? record.callerNumber ?? "—";
+  }
+
+  return record.callerNumber ?? record.calleeNumber ?? "—";
 }
 
 function formatShortDate(iso: string): string {
@@ -89,21 +133,29 @@ function getDisplayAgentName(
 }
 
 function buildSearchText(record: Record, agentName: string): string {
+  const directionKind = record.directionKind ?? record.direction ?? "unknown";
+  const normalizedDirectionKind =
+    directionKind === "inbound" ||
+    directionKind === "outbound" ||
+    directionKind === "unknown"
+      ? directionKind
+      : "unknown";
+
   return [
     getDisplayTitle(record),
-    record.callTo,
+    getDisplayCounterparty(record),
     record.summary,
     record.transcription,
     record.callerNumber,
     record.calleeNumber,
-    record.direction,
+    normalizedDirectionKind,
+    getDirectionLabel(normalizedDirectionKind),
     record.source,
     record.tags.join(" "),
     agentName,
   ]
     .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
+    .join(" ");
 }
 
 function matchesDate(
@@ -206,19 +258,47 @@ export default function Calls() {
     [users],
   );
 
-  const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
+  const searchableRecords = useMemo<SearchableRecord[]>(
+    () =>
+      records.map((record) => {
+        const agentName = getDisplayAgentName(record, userMap);
+        return {
+          ...record,
+          agentName,
+          searchText: buildSearchText(record, agentName),
+        };
+      }),
+    [records, userMap],
+  );
 
-    let list = records.filter((record) => {
-      const agentName = getDisplayAgentName(record, userMap);
-      const matchSearch =
-        !query || buildSearchText(record, agentName).includes(query);
+  const fuse = useMemo(
+    () =>
+      new Fuse(searchableRecords, {
+        keys: FUSE_KEYS,
+        threshold: 0.38,
+        minMatchCharLength: 2,
+        ignoreLocation: true,
+      }),
+    [searchableRecords],
+  );
+
+  const filtered = useMemo(() => {
+    const query = search.trim();
+
+    let list = searchableRecords.filter((record) => {
       const matchStatus =
         statusFilter === "all" || record.status === statusFilter;
       const matchDate = matchesDate(getRecordDate(record), dateFrom, dateTo);
 
-      return matchSearch && matchStatus && matchDate;
+      return matchStatus && matchDate;
     });
+
+    if (query.length >= 2) {
+      const matchedIds = new Set(
+        fuse.search(query).map((result) => result.item.id),
+      );
+      list = list.filter((record) => matchedIds.has(record.id));
+    }
 
     list = [...list].sort((a, b) => {
       const dir = sortDir === "asc" ? 1 : -1;
@@ -228,7 +308,13 @@ export default function Calls() {
       }
 
       if (sortField === "callTo") {
-        return dir * (a.callTo ?? "").localeCompare(b.callTo ?? "", "ru");
+        return (
+          dir *
+          getDisplayCounterparty(a).localeCompare(
+            getDisplayCounterparty(b),
+            "ru",
+          )
+        );
       }
 
       if (sortField === "durationSec") {
@@ -244,14 +330,14 @@ export default function Calls() {
 
     return list;
   }, [
-    records,
+    searchableRecords,
     search,
     sortField,
     sortDir,
     statusFilter,
     dateFrom,
     dateTo,
-    userMap,
+    fuse,
   ]);
 
   const { page, totalPages, pageItems, setPage } = usePagination(filtered);
@@ -438,12 +524,24 @@ export default function Calls() {
             {isPending ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell><Skeleton className="h-4 w-40" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-40" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-28" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-16" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-20" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-16" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                  </TableCell>
                 </TableRow>
               ))
             ) : filtered.length === 0 ? (
@@ -478,7 +576,12 @@ export default function Calls() {
                       {getDisplayTitle(record)}
                     </TableCell>
                     <TableCell className="text-neutral-600 dark:text-neutral-400">
-                      {record.callTo ?? "—"}
+                      <div className="flex flex-col gap-1">
+                        <span>{getDisplayCounterparty(record)}</span>
+                        <span className="text-xs text-neutral-400">
+                          {getDirectionLabel(record.directionKind ?? null)}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-neutral-600 dark:text-neutral-400">
                       {agentName}
@@ -508,7 +611,11 @@ export default function Calls() {
         <p className="text-xs text-neutral-400">
           {filtered.length} из {records.length} записей
         </p>
-        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+        />
       </div>
 
       <CallDetailSheet

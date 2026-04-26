@@ -1,412 +1,300 @@
-# Backend API Contract
+# Backend API Contract (actual code state)
 
-Актуальный контракт backend API для фронтенда и AI-агентов.
+Этот документ описывает **текущее** API backend по коду в `backend/src`.
 
 ## Rules for AI agents
 
-- Use this file as integration source of truth.
-- Do not assume behavior that is not explicitly documented here.
-- Auth mode is cookie-based (`httpOnly` cookie `auth`).
-- Upload and Mango AI processing are async: final AI data comes from record-reading endpoints, not from upload/webhook responses.
-- `director` and `manager` are single string roles, not arrays.
+- Источник истины: маршруты в `src/plugins/*/index.ts`.
+- Почти все защищённые роуты требуют cookie `auth` (JWT) через `guardPlugin`.
+- Роль `director` обязательна для админских роутов пользователей, статистики и Mango sync/mapping.
+- Ошибки обычно имеют формат `{ "message": "..." }`.
+- Обработка записей асинхронная: `POST /records/upload` и Mango webhook возвращают ответ до завершения AI-пайплайна.
 
 ## Base URL
 
-- local: `http://localhost:3000`
+- Local: `http://localhost:3000`
 
----
+## Auth model
 
-## Auth
+- Аутентификация: HttpOnly cookie `auth`.
+- JWT payload: `{ id: number, role: "director" | "manager" }`.
+- Cookie settings (текущие):
+  - `httpOnly: true`
+  - `path: /`
+  - `sameSite: lax`
+  - `secure: false` (dev)
+  - `maxAge: 7 days`
 
-### `POST /login`
+## Common error model
 
-Request:
+Типовые ответы:
 
-```/dev/null/login-request.json#L1-4
-{
-  "email": "director@example.com",
-  "password": "director123"
-}
+```json
+{ "message": "Unauthorized" }
 ```
 
-Success `200`:
-
-```/dev/null/login-response.json#L1-7
-{
-  "id": 1,
-  "name": "director",
-  "fio": "Директор Демо",
-  "role": "director",
-  "email": "director@example.com",
-  "mangoUserId": null
-}
+```json
+{ "message": "Forbidden" }
 ```
 
-Side effect:
-- sets `httpOnly` cookie `auth`
-
-Notes:
-- JWT payload contains at least `id` and `role`
-- protected routes still load the current user from DB on each request
-
-### `POST /logout`
-
-Success `200`:
-
-```/dev/null/logout-response.json#L1-3
-{
-  "message": "Logged out"
-}
+```json
+{ "message": "User not found" }
 ```
 
-Side effect:
-- clears cookie `auth`
+```json
+{ "message": "Invalid record id" }
+```
 
----
+Глобальный `onError` возвращает:
+- `404` для `NotFoundError`
+- `500` для остальных `Error`
 
 ## Health
 
 ### `GET /health`
 
-Success `200`:
+Публичный endpoint.
 
-```/dev/null/health-response.json#L1-3
+Response `200`:
+
+```json
+{ "status": "ok" }
+```
+
+## Auth
+
+### `POST /login`
+
+Публичный endpoint. Валидирует email/password, устанавливает cookie `auth`.
+
+Body (минимально необходимое):
+
+```json
 {
-  "status": "ok"
+  "email": "manager@example.com",
+  "password": "password123"
 }
 ```
 
----
+Response `200`: объект пользователя (без `password_hash`).
+
+### `POST /logout`
+
+Удаляет cookie `auth`.
+
+Response `200`:
+
+```json
+{ "message": "Logged out" }
+```
 
 ## User entity
 
-Current response shape:
+`User` (ответы API) содержит:
 
-```/dev/null/user-type.ts#L1-8
-type User = {
+```ts
+{
   id: number;
   name: string;
   fio: string | null;
   role: "director" | "manager";
   email: string;
+
   mangoUserId: number | null;
-};
+  mangoLogin?: string | null;
+  mangoExtension?: string | null;
+  mangoPosition?: string | null;
+  mangoDepartment?: string | null;
+  mangoMobile?: string | null;
+  mangoOutgoingLine?: string | null;
+  mangoAccessRoleId?: number | null;
+  mangoGroups?: number[] | null;
+  mangoSips?: string[] | null;
+  mangoTelephonyNumbers?: Array<{
+    number: string;
+    protocol?: string;
+    order?: number;
+    wait_sec?: number;
+    status?: string;
+  }> | null;
+}
 ```
 
 ### Seeded director
 
-On first application start, if table `users` is empty, backend creates one seeded `director` user.
-
-Default seed:
-
-```/dev/null/director-seed.json#L1-6
-{
-  "email": "director@example.com",
-  "password": "director123",
-  "name": "director",
-  "role": "director"
-}
-```
-
----
+Если таблица `users` пуста, создаётся директор:
+- `email: director@example.com`
+- `password: director123`
+- `role: director`
 
 ## Users
 
 ### `POST /users/register`
 
-Public endpoint.
+Публичная регистрация. Роль принудительно ставится в `manager`.
 
-Request body is validated against the backend create-user schema, but the route forcibly creates only `manager` users.
+Body:
 
-Request example:
-
-```/dev/null/register-request.json#L1-7
+```json
 {
-  "name": "Alice",
-  "email": "alice@example.com",
-  "password": "qwerty123",
-  "fio": "Иванов Иван Иванович",
-  "role": "manager",
-  "mangoUserId": 12345
-}
-```
-
-Notes:
-- `name`, `email`, `password` are required
-- `fio` is optional and may be `null`
-- `mangoUserId` is optional
-- even if client sends another role, public registration route overwrites it with `"manager"`
-- `director` must not be created through public registration
-
-Success `200`:
-
-```/dev/null/register-response.json#L1-8
-{
-  "id": 1,
-  "name": "Alice",
-  "fio": "Иванов Иван Иванович",
-  "role": "manager",
-  "email": "alice@example.com",
-  "mangoUserId": 12345
-}
-```
-
-Possible errors:
-- `422` validation error
-- `500` duplicate email or other internal error surface
-
-### `GET /users/me`
-
-Auth required.
-
-Returns current authenticated user.
-
-Success `200`:
-
-```/dev/null/users-me-response.json#L1-8
-{
-  "id": 1,
-  "name": "Alice",
-  "fio": "Иванов Иван Иванович",
-  "role": "manager",
-  "email": "alice@example.com",
-  "mangoUserId": 12345
-}
-```
-
-### `GET /users`
-
-Auth required. Director only.
-
-Returns all users.
-
-Success `200`:
-
-```/dev/null/users-list-response.json#L1-10
-[
-  {
-    "id": 1,
-    "name": "Alice",
-    "fio": "Иванов Иван Иванович",
-    "role": "manager",
-    "email": "alice@example.com",
-    "mangoUserId": 12345
-  }
-]
-```
-
-Errors:
-- `401` unauthorized
-- `403` forbidden for non-director
-
-### `GET /users/:id`
-
-Auth required. Director only.
-
-Request params:
-- `id: number`
-
-Success `200`:
-
-```/dev/null/user-by-id-response.json#L1-8
-{
-  "id": 1,
-  "name": "Alice",
-  "fio": "Иванов Иван Иванович",
-  "role": "manager",
-  "email": "alice@example.com",
-  "mangoUserId": 12345
-}
-```
-
-Errors:
-- `401` unauthorized
-- `403` forbidden for non-director
-- `404` user not found
-
-### `PATCH /users/:id`
-
-Auth required. Director only.
-
-Allows director to update another user.
-
-Request params:
-- `id: number`
-
-Request body:
-
-```/dev/null/user-update-request.json#L1-7
-{
-  "name": "Alice Updated",
-  "fio": "Иванов Иван Иванович",
-  "email": "alice.updated@example.com",
-  "mangoUserId": 12345,
+  "name": "manager1",
+  "fio": "Иван Иванов",
+  "email": "manager1@example.com",
+  "password": "password123",
   "role": "manager"
 }
 ```
 
-All fields are optional:
-- `name?: string`
-- `fio?: string | null`
-- `email?: string`
-- `mangoUserId?: number | null`
-- `role?: "director" | "manager"`
+Примечание: даже если передать `role`, сервис создаёт `manager`.
 
-Success `200`:
+Response `200`: `User`.
 
-```/dev/null/user-update-response.json#L1-8
+### `POST /users/mango/create-local-user` (director)
+
+Создаёт локального пользователя из Mango-профиля и пытается привязать уже загруженные непривязанные Mango записи.
+
+Body:
+
+```json
 {
-  "id": 1,
-  "name": "Alice Updated",
-  "fio": "Иванов Иван Иванович",
+  "name": "operator",
+  "fio": "Оператор 1",
+  "email": "operator@example.com",
   "role": "manager",
-  "email": "alice.updated@example.com",
-  "mangoUserId": 12345
+  "mangoUserId": 12345,
+  "mangoLogin": "op_login",
+  "mangoExtension": "101",
+  "mangoPosition": "Sales",
+  "mangoDepartment": "Dept",
+  "mangoMobile": "+70000000000",
+  "mangoOutgoingLine": "+79990000000",
+  "mangoAccessRoleId": 3,
+  "mangoGroups": [1, 2],
+  "mangoSips": ["101"],
+  "mangoTelephonyNumbers": [{ "number": "+79990000000" }],
+  "password": "optionalPassword"
 }
 ```
 
-Behavior notes:
-- route checks target user existence before update
-- backend prevents removing the last `director` role from the system
+Response `200`:
 
-Errors:
-- `401` unauthorized
-- `403` forbidden for non-director
-- `404` user not found
-- `400` when trying to demote the last director
-- `500` duplicate email or duplicate `mangoUserId` may surface as internal error text
-
-### `DELETE /users/:id`
-
-Auth required. Director only.
-
-Deletes a user.
-
-Request params:
-- `id: number`
-
-Success `200`:
-
-```/dev/null/user-delete-response.json#L1-3
+```json
 {
-  "message": "User deleted"
+  "id": 10,
+  "name": "operator",
+  "role": "manager",
+  "email": "operator@example.com",
+  "mangoUserId": 12345,
+  "linkedCount": 7
 }
 ```
 
-Behavior notes:
-- director cannot delete themselves
-- backend prevents deleting the last director
-- user-owned records are preserved because `records.user_id` uses `ON DELETE SET NULL`
+### `GET /users/me`
 
-Errors:
-- `401` unauthorized
-- `403` forbidden for non-director
-- `404` user not found
-- `400` if director tries to delete themselves
-- `400` if trying to delete the last director
+Response `200`: текущий `User`.
+
+### `GET /users` (director)
+
+Response `200`: `User[]`.
+
+### `GET /users/:id` (director)
+
+Response `200`: `User`.
+
+### `PATCH /users/:id` (director)
+
+Обновляет пользователя. Нельзя понизить/удалить последнего директора.
+
+Body: любой поднабор полей `User` + `role`.
+
+Response `200`: обновлённый `User`.
+
+### `DELETE /users/:id` (director)
+
+Ограничения:
+- директор не может удалить самого себя;
+- нельзя удалить последнего директора.
+
+Response `200`:
+
+```json
+{ "message": "User deleted" }
+```
+
+### `PATCH /users/:id/reset-password` (director)
+
+Body:
+
+```json
+{ "password": "newStrongPassword" }
+```
+
+Response `200`: `User`.
 
 ### `PATCH /users/me/mango-user-id`
 
-Auth required.
+Привязывает/отвязывает текущего пользователя к Mango `user_id`.
 
-Sets or clears Mango user mapping for current user.
+Body:
 
-Request:
-
-```/dev/null/user-set-mango-request.json#L1-3
-{
-  "mangoUserId": 12345
-}
+```json
+{ "mangoUserId": 12345 }
 ```
 
-To clear mapping:
+или
 
-```/dev/null/user-clear-mango-request.json#L1-3
-{
-  "mangoUserId": null
-}
+```json
+{ "mangoUserId": null }
 ```
 
-Success `200`:
+Response `200`: обновлённый `User`.
 
-```/dev/null/user-set-mango-response.json#L1-8
-{
-  "id": 1,
-  "name": "Alice",
-  "fio": "Иванов Иван Иванович",
-  "role": "manager",
-  "email": "alice@example.com",
-  "mangoUserId": 12345
-}
-```
-
-Behavior notes:
-- if `mangoUserId` is set to a number, backend also runs backfill:
-  - links existing unowned Mango records with same `mangoUserId` to current user
+Побочный эффект: при установке `mangoUserId` backend привязывает существующие непривязанные Mango записи к этому пользователю.
 
 ### `GET /users/mango/:mangoUserId`
 
-Auth required.
+Response `200`: `User`.
 
-Returns platform user mapped to Mango user id.
+Response `404`:
 
-Request params:
-- `mangoUserId: number`
-
-Success `200`:
-
-```/dev/null/user-by-mango-response.json#L1-8
-{
-  "id": 1,
-  "name": "Alice",
-  "fio": "Иванов Иван Иванович",
-  "role": "manager",
-  "email": "alice@example.com",
-  "mangoUserId": 12345
-}
+```json
+{ "message": "User not found" }
 ```
-
-Errors:
-- `401` unauthorized
-- `404` not found
-
----
 
 ## Record entity
 
-`records` contains both manual and Mango-originated calls.
+`Record` (API response):
 
-Current response shape:
-
-```/dev/null/get-record-type.ts#L1-28
-type CheckboxItem = {
-  label: string;
-  checked: boolean;
-};
-
-type CheckboxGroups = {
-  tasks: CheckboxItem[];
-  promises: CheckboxItem[];
-  agreements: CheckboxItem[];
-};
-
-type GetRecord = {
+```ts
+{
   id: number;
   userId: number | null;
+
   source?: "manual" | "mango";
   ingestionStatus?: "ready" | "pending_audio" | "downloading" | "no_audio" | "failed";
+  ingestionError?: string | null;
+
   mangoEntryId?: string | null;
+  mangoCallId?: string | null;
   mangoRecordingId?: string | null;
+  mangoCommunicationId?: string | null;
   mangoUserId?: number | null;
+
   direction?: string | null;
+  directionKind?: "inbound" | "outbound" | "unknown" | null;
   callerNumber?: string | null;
   calleeNumber?: string | null;
-  isMissed?: boolean;
-  hasAudio?: boolean;
+  lineNumber?: string | null;
+  extension?: string | null;
+
   callStartedAt?: string | null;
   callAnsweredAt?: string | null;
   callEndedAt?: string | null;
   talkDurationSec?: number | null;
+
+  isMissed?: boolean;
+  hasAudio?: boolean;
+
   callTo: string | null;
   title: string | null;
   durationSec: number | null;
@@ -414,303 +302,685 @@ type GetRecord = {
   fileUri: string | null;
   transcription: string | null;
   summary: string | null;
+
   status: "uploaded" | "queued" | "processing" | "done" | "failed" | "not_applicable";
   error: string | null;
   startedAt: string | null;
   finishedAt: string | null;
-  checkboxes: CheckboxGroups | null;
-  tags: string[];
-};
-```
 
-Notes:
-- `qualityScore` is AI-derived and may be `null`
-- checkbox items are objects with `label` and `checked`
-- several Mango-related fields are optional in response shape
+  checkboxes: {
+    tasks: Array<{ label: string; checked: boolean }>;
+    promises: Array<{ label: string; checked: boolean }>;
+    agreements: Array<{ label: string; checked: boolean }>;
+  } | null;
+
+  tags: string[];
+}
+```
 
 ## Processing model
 
-### Manual upload
+### Manual upload flow
 
-1. `POST /records/upload`
-2. Backend immediately returns `202` with queued status
-3. Background AI pipeline runs:
-   - transcription
-   - summary
-   - tags
-   - checkboxes
-   - `qualityScore`
-4. Frontend polls `GET /records/:id` or reads feed/list endpoints later
+1. `POST /records/upload` создаёт запись со статусом `queued`.
+2. Асинхронно: `queued -> processing -> done` или `failed`.
+3. При успехе сохраняются: `transcription`, `summary`, `tags`, `checkboxes`, `qualityScore`, `durationSec`.
 
-### Mango ingestion
+### Mango ingestion flow
 
-1. Mango sends `summary` webhook -> create/update record metadata
-2. Mango sends `record/added` webhook -> download audio -> mark queued -> run same AI pipeline
-3. Missed calls have no audio:
-   - `hasAudio = false`
-   - `ingestionStatus = "no_audio"`
-   - `status = "not_applicable"`
+1. `/integrations/mango/events/summary` создаёт/обновляет metadata записи.
+2. Если звонок пропущен (`talkDurationSec = 0`):
+- `isMissed = true`
+- `status = not_applicable`
+- `ingestionStatus = no_audio`
+3. `/integrations/mango/events/record/added` скачивает аудио, сохраняет файл, ставит:
+- `hasAudio = true`
+- `ingestionStatus = ready`
+- `status = queued`
+4. Далее запускается тот же AI-пайплайн, что и для manual.
 
-## Status semantics
+### Ownership note
 
-AI `status`:
-- `uploaded`
-- `queued`
-- `processing`
-- `done`
-- `failed`
-- `not_applicable`
-
-Ingestion `ingestionStatus`:
-- `ready`
-- `pending_audio`
-- `downloading`
-- `no_audio`
-- `failed`
-
----
+- `record.userId` может быть `null` (не удалось сопоставить Mango user).
+- Когда mapping появляется, backend массово привязывает непривязанные записи.
 
 ## Records
 
+Все endpoints ниже защищены (`auth` cookie).
+
 ### `POST /records/upload`
 
-Auth required.
+Загрузка аудио и постановка в очередь.
 
-Request:
-- `multipart/form-data`
-- `file: audio/*` required
-- `title: string` optional
-- `callTo: string` optional
+Content-Type: `multipart/form-data`
 
-Success `202`:
+Fields:
+- `file` (required, `audio/*`)
+- `title` (optional)
+- `callTo` (optional)
 
-```/dev/null/record-upload-response.json#L1-7
+Response `202`:
+
+```json
 {
-  "id": 12,
-  "userId": 1,
-  "fileUri": "/absolute/path/to/uploads/1/1725000000000-call.mp3",
+  "id": 101,
+  "userId": 7,
+  "fileUri": "./uploads/7/1710000000000-call.mp3",
   "status": "queued",
   "message": "Record uploaded and queued for async processing"
 }
 ```
 
-Notes:
-- this is not the final AI result
-- final values appear later in record reads
-
 ### `GET /records`
 
-Auth required.
+Возвращает записи текущего пользователя.
 
-Returns records for current user only.
-
-Notes:
-- records with `userId = null` are not returned here
-- linked Mango records owned by current user are returned here
-
-Success `200`:
-- `GetRecord[]`
+Response `200`: `Record[]`.
 
 ### `GET /records/feed`
 
-Auth required.
+То же, что `/records`, но отсортировано по `callStartedAt desc, id desc`.
 
-Returns unified feed for current user:
-- records owned by current user
-- unowned Mango records:
-  - `source = "mango"`
-  - `userId = null`
+Response `200`: `Record[]`.
 
-Success `200`:
-- `GetRecord[]`
+### `GET /records/admin-feed` (director)
 
-### `GET /records/admin-feed`
+Глобальная лента всех записей (`callStartedAt desc, id desc`).
 
-Auth required. Director only.
-
-Returns all records of all users plus unowned records.
-
-Success `200`:
-- `GetRecord[]`
-
-Errors:
-- `401` unauthorized
-- `403` forbidden for non-director
+Response `200`: `Record[]`.
 
 ### `GET /records/:id`
 
-Auth required.
+Доступ: владелец записи или директор.
 
-Returns single record only if current user is owner.
+Response `200`: `Record`.
 
-Request params:
-- `id: string` in route, backend parses it to number
+Response `404`:
 
-Success `200`:
-- `GetRecord`
-
-Errors:
-- `400` invalid id
-- `404` record not found
-- `403` forbidden if record belongs to another user or is unowned
+```json
+{ "message": "Record not found" }
+```
 
 ### `GET /records/by-mango-entry/:entryId`
 
-Auth required.
+Возвращает запись по `mangoEntryId`.
 
-Returns record by Mango `entry_id`.
+Response `200`: `Record`.
 
-Important:
-- current implementation does **not** enforce ownership check here
+### `GET /records/:id/download`
 
-Success `200`:
-- `GetRecord`
+Скачивание аудиофайла.
 
-Errors:
-- `404` not found
+Доступ: владелец записи или директор.
 
----
+Поведение:
+- если `fileUri` отсутствует или `hasAudio = false` -> `404 Audio file not found`.
+- если файл физически отсутствует в storage -> `404 Audio file not found`.
+
+Success `200`: бинарный ответ с заголовками:
+- `Content-Type`
+- `Content-Length`
+- `Content-Disposition: attachment; filename="..."`
+
+### `PATCH /records/:id/checkboxes`
+
+Обновляет `checkboxes` (ручная корректировка).
+
+Доступ: владелец записи или директор.
+
+Body:
+
+```json
+{
+  "checkboxes": {
+    "tasks": [{ "label": "Согласовать КП", "checked": true }],
+    "promises": [{ "label": "Перезвонить завтра", "checked": false }],
+    "agreements": [{ "label": "Отправить прайс", "checked": true }]
+  }
+}
+```
+
+Response `200`: обновлённый `Record`.
+
+### `DELETE /records/:id` (director)
+
+Удаляет запись и связанные tags.
+
+Response `200`:
+
+```json
+{ "message": "Record deleted" }
+```
 
 ## Stats
 
-All stats endpoints are auth-required and director-only.
+Все endpoints `/stats/*` доступны только `director`.
+
+### Query params
+
+- `period`: `7d | 14d | 30d | 90d` (по умолчанию `7d`).
+- Для `GET /stats/global` и `GET /stats/agent/:userId/dashboard` можно передать custom range:
+  - `startDate` (ISO)
+  - `endDate` (ISO)
+
+Ограничения custom range:
+- обе даты должны быть переданы одновременно;
+- обе даты должны парситься в valid date;
+- `endDate > startDate`.
+
+### Activity time (важно для всех отчётов)
+
+Фильтрация диапазона в stats строится по:
+
+`activityAt = coalesce(callStartedAt, callEndedAt, callAnsweredAt, finishedAt, startedAt)`
+
+Это значит:
+- в приоритете реальное время звонка (`callStartedAt`),
+- затем `callEndedAt` / `callAnsweredAt`,
+- иначе время окончания AI,
+- иначе время старта AI.
+
+`missed` в статистике считается как:
+
+`isMissed = true OR ingestionStatus = 'no_audio'`
 
 ### `GET /stats/overview`
 
-Returns top-level aggregated metrics.
+Быстрый summary для KPI-card верхнего уровня.
 
-Success `200`:
+Response `200`:
 
-```/dev/null/stats-overview-response.json#L1-7
+```ts
 {
-  "totalRecords": 120,
-  "doneRecords": 95,
-  "failedRecords": 10,
-  "avgQualityScore": 78.4,
-  "totalManagers": 5
+  totalRecords: number;
+  doneRecords: number;
+  failedRecords: number;
+  avgQualityScore: number | null; // округлено до 1 знака
+  totalManagers: number;
 }
 ```
-
-Notes:
-- `avgQualityScore` may be `null` if no scored records exist
-- `totalManagers` counts users with role `"manager"`
-
-Errors:
-- `401` unauthorized
-- `403` forbidden for non-director
 
 ### `GET /stats/weekly`
 
-Returns last 7 days including empty days.
+Дневной ряд по объёму/успешности обработки.
 
-Success `200`:
+Response `200`:
 
-```/dev/null/stats-weekly-response.json#L1-9
-[
-  { "date": "2026-04-25", "total": 18, "done": 14 },
-  { "date": "2026-04-26", "total": 0, "done": 0 },
-  { "date": "2026-04-27", "total": 7, "done": 4 }
-]
+```ts
+Array<{
+  date: string; // YYYY-MM-DD
+  total: number;
+  done: number;
+}>
 ```
 
-Notes:
-- date is `YYYY-MM-DD`
-- backend groups by `coalesce(callStartedAt, finishedAt, startedAt)`
-
-Errors:
-- `401` unauthorized
-- `403` forbidden for non-director
+Ряд всегда плотный: дни без данных возвращаются как `0`.
 
 ### `GET /stats/by-agent`
 
-Returns aggregated stats for manager users.
+Статистика по менеджерам (включая менеджеров без записей в периоде).
 
-Success `200`:
+Важно: учитываются не только записи с `record.userId = manager.id`, но и непривязанные записи (`record.userId IS NULL`), где `record.mangoUserId` совпадает с `manager.mangoUserId`.
 
-```/dev/null/stats-by-agent-response.json#L1-9
-[
-  {
-    "userId": 1,
-    "name": "Иванов Иван Иванович",
-    "total": 28,
-    "avgQualityScore": 79.1
-  }
-]
+Response `200`:
+
+```ts
+Array<{
+  userId: number;
+  name: string;
+  total: number;
+  done: number;
+  failed: number;
+  missed: number;
+  avgTalkDurationSec: number | null;
+  avgQualityScore: number | null;
+}>
 ```
 
-Notes:
-- only users with role `"manager"` are included
-- `name` is `fio` if present, otherwise fallback to `name`
-- managers without records are still included with `total = 0`
-- `avgQualityScore` may be `null`
+Сортировка: по `total desc`, затем `name`.
 
-Errors:
-- `401` unauthorized
-- `403` forbidden for non-director
+### `GET /stats/agent/:userId/dashboard`
 
----
+Персональный дашборд по конкретному менеджеру.
+
+Доступ:
+- только `director`;
+- целевой пользователь должен существовать и иметь роль `manager`.
+
+Ошибки:
+- `400 { "message": "Invalid user id" }`
+- `404 { "message": "User not found" }`
+- `400 { "message": "Target user must be a manager" }`
+
+Важно: endpoint включает как напрямую привязанные записи (`record.userId = manager.id`), так и непривязанные Mango записи с совпадающим `mangoUserId`.
+
+Response `200`:
+
+```ts
+{
+  agent: {
+    userId: number;
+    name: string;
+    email: string;
+  };
+
+  range: {
+    mode: "period" | "custom";
+    period: "7d" | "14d" | "30d" | "90d" | "custom";
+    start: string; // ISO
+    end: string;   // ISO (exclusive upper bound)
+    days: number;
+  };
+
+  overview: {
+    totalRecords: number;
+    doneRecords: number;
+    failedRecords: number;
+    avgQualityScore: number | null;
+
+    queuedRecords: number;
+    processingRecords: number;
+    uploadedRecords: number;
+    notApplicableRecords: number;
+
+    missedRecords: number;
+    noAudioRecords: number;
+    withAudioRecords: number;
+
+    avgTalkDurationSec: number | null;
+    avgProcessingDurationSec: number | null;
+  };
+
+  source: Array<{
+    source: string;
+    total: number;
+    done: number;
+    failed: number;
+    inProgress: number;
+    missed: number;
+    noAudio: number;
+    avgQualityScore: number | null;
+  }>;
+
+  direction: Array<{
+    direction: string;
+    total: number;
+    done: number;
+    failed: number;
+    missed: number;
+    avgQualityScore: number | null;
+  }>;
+
+  processingStatuses: Array<{ status: string; total: number }>;
+  ingestionStatuses: Array<{ ingestionStatus: string; total: number }>;
+
+  trend: Array<{
+    date: string;
+    total: number;
+    done: number;
+    failed: number;
+    missed: number;
+    noAudio: number;
+    avgQualityScore: number | null;
+  }>;
+
+  operational: {
+    mangoPendingAudio: number;
+    mangoDownloading: number;
+    mangoReady: number;
+    mangoNoAudio: number;
+    mangoIngestionFailed: number;
+    aiQueued: number;
+    aiProcessing: number;
+    aiFailed: number;
+  };
+}
+```
+
+### `GET /stats/global`
+
+Главный endpoint для дашборда: возвращает комплексный срез по качеству, пайплайну, источникам, ownership и трендам.
+
+Response `200`:
+
+```ts
+{
+  range: {
+    mode: "period" | "custom";
+    period: "7d" | "14d" | "30d" | "90d" | "custom";
+    start: string; // ISO
+    end: string;   // ISO (exclusive upper bound)
+    days: number;
+  };
+
+  overview: {
+    totalRecords: number;
+    doneRecords: number;
+    failedRecords: number;
+    avgQualityScore: number | null;
+    totalManagers: number;
+
+    queuedRecords: number;
+    processingRecords: number;
+    uploadedRecords: number;
+    notApplicableRecords: number;
+
+    missedRecords: number;
+    noAudioRecords: number;
+    withAudioRecords: number;
+    unassignedRecords: number;
+
+    avgTalkDurationSec: number | null;
+    avgProcessingDurationSec: number | null;
+  };
+
+  source: Array<{
+    source: string; // manual | mango | unknown
+    total: number;
+    done: number;
+    failed: number;
+    inProgress: number; // uploaded + queued + processing
+    missed: number;
+    noAudio: number;
+    avgQualityScore: number | null;
+  }>;
+
+  direction: Array<{
+    direction: string; // inbound | outbound | unknown
+    total: number;
+    done: number;
+    failed: number;
+    missed: number;
+    avgQualityScore: number | null;
+  }>;
+
+  processingStatuses: Array<{
+    status: string;
+    total: number;
+  }>;
+
+  ingestionStatuses: Array<{
+    ingestionStatus: string;
+    total: number;
+  }>;
+
+  ownership: {
+    assigned: number;
+    unassigned: number;
+    unassignedMango: number;
+    unassignedManual: number;
+  };
+
+  trend: Array<{
+    date: string; // YYYY-MM-DD
+    total: number;
+    done: number;
+    failed: number;
+    missed: number;
+    noAudio: number;
+    avgQualityScore: number | null;
+  }>;
+
+  byAgent: Array<{
+    userId: number;
+    name: string;
+    total: number;
+    done: number;
+    failed: number;
+    missed: number;
+    avgTalkDurationSec: number | null;
+    avgQualityScore: number | null;
+  }>;
+
+  operational: {
+    mangoPendingAudio: number;
+    mangoDownloading: number;
+    mangoReady: number;
+    mangoNoAudio: number;
+    mangoIngestionFailed: number;
+    aiQueued: number;
+    aiProcessing: number;
+    aiFailed: number;
+    unassignedMango: number;
+  };
+}
+```
+
+### Интерпретация ключевых метрик для дашборда
+
+- `overview.doneRecords / overview.totalRecords` -> completion rate.
+- `overview.failedRecords / overview.totalRecords` -> processing failure rate.
+- `overview.unassignedRecords` и `ownership.unassignedMango` -> проблемы маппинга операторов.
+- `operational.mangoPendingAudio + mangoDownloading` -> backlog ingestion.
+- `operational.aiQueued + aiProcessing` -> backlog AI.
+- `trend[]` -> дневной тренд объёма/качества/пропущенных.
+- `source[]` + `direction[]` -> качество по источнику и направлению звонков.
+
+### Рекомендуемая раскладка dashboard (frontend / AI)
+
+- Block 1 (KPI cards): `overview.*`.
+- Block 2 (Pipeline health): `operational`, `processingStatuses`, `ingestionStatuses`.
+- Block 3 (Ownership & mapping): `ownership`.
+- Block 4 (Quality slices): `source`, `direction`, `byAgent`.
+- Block 5 (Time trend): `trend`.
 
 ## Mango webhooks
 
+### Signature verification
+
+Оба webhook endpoint требуют корректную подпись Mango:
+- body должен содержать `vpbx_api_key`, `sign`, `json`.
+- при неверной подписи -> `403 { "message": "Invalid signature" }`.
+
 ### `POST /integrations/mango/events/summary`
 
-Public endpoint for Mango. Signature-validated.
+Body:
 
-Purpose:
-- create or update Mango record metadata
-
-Success `200`:
-
-```/dev/null/mango-summary-response.json#L1-3
+```json
 {
-  "ok": true
+  "vpbx_api_key": "...",
+  "sign": "...",
+  "json": "{ ...payload... }"
 }
 ```
+
+`json` должен соответствовать `mangoSummaryPayloadSchema`:
+- `entry_id: string`
+- `call_direction: number` (1 inbound, 2 outbound)
+- `from`, `to`, `line_number`
+- `create_time`, `talk_time`, `end_time`, и т.д.
+
+Response `200`:
+
+```json
+{ "ok": true }
+```
+
+Обработка асинхронная.
 
 ### `POST /integrations/mango/events/record/added`
 
-Public endpoint for Mango. Signature-validated.
+Body:
 
-Purpose:
-- receive recording id
-- download audio
-- link/store file
-- enqueue AI processing
-
-Success `200`:
-
-```/dev/null/mango-record-added-response.json#L1-3
+```json
 {
-  "ok": true
+  "vpbx_api_key": "...",
+  "sign": "...",
+  "json": "{ ...payload... }"
 }
 ```
 
----
+`json` должен соответствовать `mangoRecordAddedPayloadSchema`:
+- `entry_id`, `product_id`, `user_id`, `recording_id`, `timestamp`.
 
-## Error model
+Response `200`:
 
-Common backend error categories:
+```json
+{ "ok": true }
+```
 
-- `400` bad request
-- `401` unauthorized
-- `403` forbidden
-- `404` not found
-- `422` validation error
-- `500` internal error
+Обработка асинхронная: скачивание записи, сохранение в storage, запуск AI.
 
-Important implementation notes:
-- some business-rule violations are returned explicitly as `400`
-- some duplicate-constraint service errors may currently surface as generic internal errors depending on global error handling
+## Mango sync and mapping (director)
 
----
+Все endpoints ниже защищены + требуют роль `director`.
 
-## Frontend integration checklist
+### `GET /integrations/mango/users/candidates`
 
-- Always send cookies on protected requests.
-- Treat `POST /records/upload` as async job start.
-- Do not expect final AI output immediately after upload.
-- Use `GET /records/feed` for user timeline.
-- Use `GET /records/admin-feed` for director global feed.
-- Respect role-based restrictions on user management and stats endpoints.
-- Expect `qualityScore` to be nullable.
-- Expect checkbox values as objects with `label` and `checked`, not as plain strings.
+Возвращает список пользователей Mango с кандидатами сопоставления на локальных пользователей.
+
+Response `200`:
+
+```ts
+{
+  items: Array<{
+    mangoUserId: number;
+    name: string | null;
+    email: string | null;
+    department: string | null;
+    position: string | null;
+    accessRoleId: number | null;
+    mobile: string | null;
+    login: string | null;
+    extension: string | null;
+    outgoingLine: string | null;
+    sips: string[];
+    telephonyNumbers: Array<{ number: string; protocol?: string; order?: number; wait_sec?: number; status?: string }>;
+    groups: number[];
+
+    linkedUserId: number | null;
+    linkedByMangoUserId: boolean;
+
+    candidates: Array<{
+      user: {
+        id: number;
+        name: string;
+        fio: string | null;
+        email: string;
+        role: "director" | "manager";
+        mangoUserId: number | null;
+      };
+      score: number;
+      reasons: Array<"mango_user_id_exact" | "extension_hint" | "login_hint" | "sip_hint" | "record_history">;
+    }>;
+
+    createLocalUserDraft: {
+      name: string;
+      fio: string | null;
+      email: string;
+      role: "manager";
+      mangoUserId: number;
+      mangoLogin: string | null;
+      mangoExtension: string | null;
+      mangoPosition: string | null;
+      mangoDepartment: string | null;
+      mangoMobile: string | null;
+      mangoOutgoingLine: string | null;
+      mangoAccessRoleId: number | null;
+      mangoGroups: number[];
+      mangoSips: string[];
+      mangoTelephonyNumbers: Array<{ number: string; protocol?: string; order?: number; wait_sec?: number; status?: string }>;
+    } | null;
+  }>;
+}
+```
+
+### `PATCH /integrations/mango/users/:mangoUserId/link`
+
+Привязывает Mango user к локальному пользователю или снимает привязку.
+
+Body:
+
+```json
+{ "userId": 7 }
+```
+
+или
+
+```json
+{ "userId": null }
+```
+
+Response `200` (link):
+
+```json
+{
+  "ok": true,
+  "mangoUserId": 12345,
+  "linkedUserId": 7,
+  "linkedCount": 12
+}
+```
+
+Response `200` (unlink):
+
+```json
+{
+  "ok": true,
+  "mangoUserId": 12345,
+  "linkedUserId": null
+}
+```
+
+### `POST /integrations/mango/sync`
+
+Ручной polling sync звонков за диапазон.
+
+Body:
+
+```json
+{
+  "startDate": "2026-04-01",
+  "endDate": "2026-04-25",
+  "limit": 500,
+  "offset": 0,
+  "pollIntervalMs": 3000,
+  "maxAttempts": 30,
+  "downloadRecordings": true
+}
+```
+
+Response `200`:
+
+```json
+{
+  "startDate": "2026-04-01",
+  "endDate": "2026-04-25",
+  "fetched": 120,
+  "created": 40,
+  "updated": 80,
+  "downloaded": 65,
+  "failedDownloads": 2,
+  "skippedNoAudio": 53
+}
+```
+
+### `POST /integrations/mango/sync/users/refresh`
+
+Обновляет cached directory пользователей Mango.
+
+Response `200`:
+
+```json
+{ "count": 83 }
+```
+
+## AI-agent integration notes
+
+- Для ролевой авторизации не полагайтесь на UI: проверяйте `403` как нормальный сценарий.
+- Для `records` учитывайте `status` + `ingestionStatus` вместе:
+  - `status=not_applicable` и `ingestionStatus=no_audio` — валидный финал для пропущенного звонка.
+- Для общего дашборда используйте `GET /stats/global`.
+- Для дашборда конкретного менеджера используйте `GET /stats/agent/:userId/dashboard` (вместо фильтрации `by-agent` на клиенте).
+- В любых списках записей `userId=null` не ошибка, а сигнал непривязанного Mango владельца.
+- `range.end` в stats фактически используется как exclusive upper bound.
+
+## Minimal frontend checklist
+
+1. Логин через `POST /login`, всегда с `credentials: include`.
+2. Проверка сессии через `GET /users/me`.
+3. Для manager-экрана использовать `GET /records/feed`.
+4. Для director-экрана использовать `GET /records/admin-feed` + `GET /stats/global`.
+5. Для карточки конкретного сотрудника использовать `GET /stats/agent/:userId/dashboard`.
+6. Для Mango mapping использовать `/integrations/mango/users/candidates` + `PATCH /integrations/mango/users/:mangoUserId/link`.
+7. Для ручного sync использовать `POST /integrations/mango/sync`.

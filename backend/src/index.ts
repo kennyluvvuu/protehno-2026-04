@@ -12,6 +12,7 @@ import AIService from "./plugins/records/ai-service";
 import { MangoClient } from "./plugins/mango/client";
 import { MangoIngestionService } from "./plugins/mango/service";
 import { mangoWebhookPlugin } from "./plugins/mango/webhook";
+import { mangoSyncPlugin } from "./plugins/mango/sync";
 import { seedUsers } from "./seed/users";
 import { statsPlugin } from "./plugins/stats";
 import { StatsService } from "./plugins/stats/service";
@@ -19,8 +20,8 @@ import { StatsService } from "./plugins/stats/service";
 async function bootstrapServer() {
     const db = getDbConnection(Bun.env.DATABASE_URL!);
     const userService = new UserService(db);
-    const recordsService = new RecordService(db);
     const localStorage = new LocalStorage("./uploads/");
+    const recordsService = new RecordService(db, localStorage);
     const aiService = new AIService();
     const statsService = new StatsService(db);
 
@@ -71,6 +72,14 @@ async function bootstrapServer() {
         )
         .use(statsPlugin(statsService, userService))
         .use(mangoWebhookPlugin(mangoClient, mangoIngestionService))
+        .use(
+            mangoSyncPlugin(
+                mangoClient,
+                recordsService,
+                userService,
+                localStorage,
+            ),
+        )
         .listen(3000);
 
     console.log(
