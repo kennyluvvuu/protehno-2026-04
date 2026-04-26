@@ -74,6 +74,7 @@ export interface MangoSyncPayload {
   endDate: string;
   limit?: number;
   offset?: number;
+  maxPages?: number;
   pollIntervalMs?: number;
   maxAttempts?: number;
   downloadRecordings?: boolean;
@@ -118,9 +119,13 @@ export const mangoApi = {
 
   sync: async (payload: MangoSyncPayload): Promise<MangoSyncResponse> => {
     assertRequestCooldown("mango:sync", 1500);
+    const syncTimeoutMs = Number(
+      import.meta.env.VITE_MANGO_SYNC_TIMEOUT ?? 30 * 60 * 1000,
+    );
     const { data } = await api.post<MangoSyncResponse>(
       "/integrations/mango/sync",
       payload,
+      { timeout: syncTimeoutMs },
     );
     return data;
   },

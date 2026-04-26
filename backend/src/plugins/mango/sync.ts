@@ -1,5 +1,6 @@
 import Elysia, { t, type Static } from "elysia";
 import type RecordService from "../records/service";
+import type RecordAiService from "../records/ai-service";
 import type UserService from "../user/service";
 import type { IStorage } from "../../storage/interface";
 import { guardPlugin } from "../guard";
@@ -272,11 +273,113 @@ type SyncSummary = {
     skippedNoAudio: number;
 };
 
+type MangoDateWindow = {
+    startDate: string;
+    endDate: string;
+};
+
 const DEFAULT_POLL_INTERVAL_MS = 3000;
 const DEFAULT_MAX_ATTEMPTS = 30;
 const DEFAULT_LIMIT = 500;
 const DEFAULT_OFFSET = 0;
 const DEFAULT_MAX_PAGES = 50;
+const STATS_REQUEST_MIN_INTERVAL_MS = 2100;
+
+const MANGO_DATE_TIME_RE =
+    /^(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/;
+
+const parseMangoDateTime = (value: string): Date | null => {
+    const match = value.trim().match(MANGO_DATE_TIME_RE);
+    if (!match) return null;
+
+    const [, dd, mm, yyyy, hh = "00", mi = "00", ss = "00"] = match;
+    const day = Number(dd);
+    const month = Number(mm);
+    const year = Number(yyyy);
+    const hours = Number(hh);
+    const minutes = Number(mi);
+    const seconds = Number(ss);
+
+    if (
+        !Number.isInteger(day) ||
+        !Number.isInteger(month) ||
+        !Number.isInteger(year) ||
+        !Number.isInteger(hours) ||
+        !Number.isInteger(minutes) ||
+        !Number.isInteger(seconds)
+    ) {
+        return null;
+    }
+
+    const date = new Date(year, month - 1, day, hours, minutes, seconds, 0);
+    if (
+        date.getFullYear() !== year ||
+        date.getMonth() !== month - 1 ||
+        date.getDate() !== day ||
+        date.getHours() !== hours ||
+        date.getMinutes() !== minutes ||
+        date.getSeconds() !== seconds
+    ) {
+        return null;
+    }
+
+    return date;
+};
+
+const toMangoDateTime = (value: Date): string => {
+    const dd = String(value.getDate()).padStart(2, "0");
+    const mm = String(value.getMonth() + 1).padStart(2, "0");
+    const yyyy = String(value.getFullYear());
+    const hh = String(value.getHours()).padStart(2, "0");
+    const mi = String(value.getMinutes()).padStart(2, "0");
+    const ss = String(value.getSeconds()).padStart(2, "0");
+    return `${dd}.${mm}.${yyyy} ${hh}:${mi}:${ss}`;
+};
+
+const splitByMonthWindows = (
+    startDateRaw: string,
+    endDateRaw: string,
+): MangoDateWindow[] => {
+    const start = parseMangoDateTime(startDateRaw);
+    const end = parseMangoDateTime(endDateRaw);
+
+    if (!start || !end) {
+        throw new Error(
+            `Invalid Mango date format. Expected DD.MM.YYYY HH:mm:ss, got startDate="${startDateRaw}" endDate="${endDateRaw}"`,
+        );
+    }
+
+    if (start.getTime() > end.getTime()) {
+        throw new Error("endDate must be greater or equal to startDate");
+    }
+
+    const windows: MangoDateWindow[] = [];
+    let cursor = new Date(start);
+
+    while (cursor.getTime() <= end.getTime()) {
+        const windowStart = new Date(cursor);
+        const monthEnd = new Date(
+            windowStart.getFullYear(),
+            windowStart.getMonth() + 1,
+            0,
+            23,
+            59,
+            59,
+            0,
+        );
+        const windowEnd =
+            monthEnd.getTime() > end.getTime() ? new Date(end) : monthEnd;
+
+        windows.push({
+            startDate: toMangoDateTime(windowStart),
+            endDate: toMangoDateTime(windowEnd),
+        });
+
+        cursor = new Date(windowEnd.getTime() + 1000);
+    }
+
+    return windows;
+};
 
 const assertDirector = (userRole: UserRole, set: ProtectedContext["set"]) => {
     if (userRole !== "director") {
@@ -442,16 +545,26 @@ class MangoPollingSyncService {
         loadedAt: number;
         entries: MangoUserDirectoryEntry[];
     } | null = null;
+    private lastStatsRequestAt = 0;
 
     constructor(
         private readonly mangoClient: MangoClient,
         private readonly recordService: RecordService,
         private readonly userService: UserService,
         private readonly storage: IStorage,
+        private readonly aiService: RecordAiService,
     ) {}
 
     private async sleep(ms: number) {
         await new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    private async ensureStatsRequestRateLimit() {
+        const elapsed = Date.now() - this.lastStatsRequestAt;
+        if (elapsed < STATS_REQUEST_MIN_INTERVAL_MS) {
+            await this.sleep(STATS_REQUEST_MIN_INTERVAL_MS - elapsed);
+        }
+        this.lastStatsRequestAt = Date.now();
     }
 
     private async loadUsersDirectory(
@@ -745,6 +858,8 @@ class MangoPollingSyncService {
     }
 
     private async requestCallsReport(options: SyncOptions): Promise<string> {
+        await this.ensureStatsRequestRateLimit();
+
         syncLog("requesting calls report", {
             startDate: options.startDate,
             endDate: options.endDate,
@@ -834,11 +949,7 @@ class MangoPollingSyncService {
                 );
             }
 
-            if (
-                response.status === "complete" ||
-                Array.isArray(data) ||
-                data?.list
-            ) {
+            if (response.status === "complete") {
                 if (Array.isArray(data)) {
                     return data.flatMap((bucket) =>
                         Array.isArray(bucket.list) ? bucket.list : [],
@@ -1053,6 +1164,7 @@ class MangoPollingSyncService {
         recordId: number,
         entryId: string,
         recordingIds: string[],
+        title?: string,
     ): Promise<"downloaded" | "skipped" | "failed"> {
         const recordingId = recordingIds.find(
             (item) => !!toOptionalString(item),
@@ -1071,26 +1183,14 @@ class MangoPollingSyncService {
 
             const storageKey = `mango/${entryId}/${fileName}`;
 
-            const recordServiceAny = this.recordService as RecordService & {
-                setMangoAudio?: (
-                    recordId: number,
-                    fileUri: string,
-                    mangoRecordingId: string,
-                ) => Promise<unknown>;
-            };
-
-            if (!recordServiceAny.setMangoAudio) {
-                throw new Error(
-                    "Record service does not support Mango audio updates",
-                );
-            }
-
             const fileUri = await this.storage.upload(storageKey, file);
-            await recordServiceAny.setMangoAudio(
+            await this.recordService.setMangoAudio(
                 recordId,
                 fileUri,
                 recordingId,
             );
+
+            this.runAiPipelineInBackground(recordId, fileUri, title);
 
             return "downloaded";
         } catch (error) {
@@ -1121,29 +1221,56 @@ class MangoPollingSyncService {
 
         const directory = await this.loadUsersDirectory();
         const rawCalls: MangoCallContext[] = [];
+        const uniqueCallsByEntryId = new Map<string, MangoCallContext>();
+        const windows = splitByMonthWindows(options.startDate, options.endDate);
 
-        for (let page = 0; page < maxPages; page++) {
-            const pageOffset = offset + page * limit;
-            const key = await this.requestCallsReport({
-                ...options,
-                limit,
-                offset: pageOffset,
-            });
+        syncLog("sync windows prepared", {
+            count: windows.length,
+            first: windows[0] ?? null,
+            last: windows[windows.length - 1] ?? null,
+        });
 
-            const pageCalls = await this.pollCallsReport(key, options);
-            rawCalls.push(...pageCalls);
+        for (const [windowIndex, window] of windows.entries()) {
+            for (let page = 0; page < maxPages; page++) {
+                const pageOffset = offset + page * limit;
+                const key = await this.requestCallsReport({
+                    ...options,
+                    startDate: window.startDate,
+                    endDate: window.endDate,
+                    limit,
+                    offset: pageOffset,
+                });
 
-            syncLog("raw calls page received", {
-                page,
-                pageOffset,
-                pageSize: pageCalls.length,
-                totalCollected: rawCalls.length,
-            });
+                const pageCalls = await this.pollCallsReport(key, options);
 
-            if (pageCalls.length < limit) {
-                break;
+                for (const call of pageCalls) {
+                    const entryId = toOptionalString(call.entry_id);
+                    if (!entryId) {
+                        rawCalls.push(call);
+                        continue;
+                    }
+                    if (!uniqueCallsByEntryId.has(entryId)) {
+                        uniqueCallsByEntryId.set(entryId, call);
+                    }
+                }
+
+                syncLog("raw calls page received", {
+                    windowIndex,
+                    windowStart: window.startDate,
+                    windowEnd: window.endDate,
+                    page,
+                    pageOffset,
+                    pageSize: pageCalls.length,
+                    uniqueCollected: uniqueCallsByEntryId.size,
+                });
+
+                if (pageCalls.length < limit) {
+                    break;
+                }
             }
         }
+
+        rawCalls.push(...uniqueCallsByEntryId.values());
 
         syncLog("raw calls received", {
             count: rawCalls.length,
@@ -1227,6 +1354,7 @@ class MangoPollingSyncService {
                 upsertResult.record.id,
                 normalized.entryId,
                 normalized.recordingIds,
+                upsertResult.record.title ?? undefined,
             );
 
             if (result === "downloaded") downloaded += 1;
@@ -1259,6 +1387,43 @@ class MangoPollingSyncService {
         const users = await this.loadUsersDirectory(true);
         return { count: users.length };
     }
+
+    private runAiPipelineInBackground(
+        recordId: number,
+        fileUri: string,
+        title?: string,
+    ): void {
+        void (async () => {
+            try {
+                syncLog("AI processing started", { recordId });
+                await this.recordService.markProcessing(recordId);
+
+                const file = await this.storage.readIntoFile(fileUri);
+                const result = await this.aiService.processFile(file, title);
+
+                await this.recordService.finishProcessing(recordId, {
+                    transcription: result.transcription,
+                    title: result.title,
+                    summary: result.summary,
+                    durationSec: result.durationSec,
+                    qualityScore: result.qualityScore,
+                    tags: result.tags,
+                    checkboxes: result.checkboxes,
+                });
+
+                syncLog("AI processing finished", { recordId });
+            } catch (error) {
+                const message = normalizeError(error);
+                syncLog("AI processing failed", { recordId, message });
+
+                try {
+                    await this.recordService.failProcessing(recordId, message);
+                } catch {
+                    syncLog("failed to persist AI error", { recordId });
+                }
+            }
+        })();
+    }
 }
 
 const syncBodySchema = t.Object({
@@ -1281,12 +1446,14 @@ export const mangoSyncPlugin = (
     recordService: RecordService,
     userService: UserService,
     storage: IStorage,
+    aiService: RecordAiService,
 ) => {
     const syncService = new MangoPollingSyncService(
         mangoClient,
         recordService,
         userService,
         storage,
+        aiService,
     );
 
     return new Elysia({ prefix: "/integrations/mango" })

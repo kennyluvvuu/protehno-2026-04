@@ -20,7 +20,63 @@ type ProcessFileResult = RecordProcessingResult & {
     title: string | null;
 };
 
+class FixedWindowRateLimiter {
+    private readonly windowMs: number;
+    private readonly maxRequests: number;
+    private requestTimestamps: number[] = [];
+    private lock: Promise<void> = Promise.resolve();
+
+    constructor(maxRequests: number, windowMs: number) {
+        this.maxRequests = maxRequests;
+        this.windowMs = windowMs;
+    }
+
+    async waitForSlot(): Promise<void> {
+        let release: (() => void) | undefined;
+        const previous = this.lock;
+        this.lock = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+
+        await previous;
+
+        try {
+            while (true) {
+                const now = Date.now();
+                this.requestTimestamps = this.requestTimestamps.filter(
+                    (ts) => now - ts < this.windowMs,
+                );
+
+                if (this.requestTimestamps.length < this.maxRequests) {
+                    this.requestTimestamps.push(now);
+                    return;
+                }
+
+                const oldest = this.requestTimestamps[0]!;
+                const waitMs = Math.max(
+                    1,
+                    this.windowMs - (now - oldest),
+                );
+                await Bun.sleep(waitMs);
+            }
+        } finally {
+            release?.();
+        }
+    }
+}
+
+const parseRequestsPerMinute = (): number => {
+    const raw = Number(Bun.env.GROQ_REQUESTS_PER_MINUTE ?? "20");
+    if (!Number.isFinite(raw) || raw <= 0) return 20;
+    return Math.floor(raw);
+};
+
 class RecordAiService {
+    private static readonly groqRateLimiter = new FixedWindowRateLimiter(
+        parseRequestsPerMinute(),
+        60_000,
+    );
+
     private readonly transcriptionProvider = createOpenAI({
         name: "whisperkit",
         baseURL: Bun.env.GROQ_BASE_URL ?? "https://api.groq.com/openai/v1",
@@ -35,6 +91,8 @@ class RecordAiService {
         text: string;
         durationSec: number | null;
     }> {
+        await RecordAiService.groqRateLimiter.waitForSlot();
+
         const model = this.transcriptionProvider.transcription(
             Bun.env.GROQ_TRANSCRIPTION_MODEL ?? "whisper-large-v3-turbo",
         );
