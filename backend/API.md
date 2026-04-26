@@ -5,7 +5,7 @@
 ## Rules for AI agents
 
 - Источник истины: маршруты в `src/plugins/*/index.ts`.
-- Почти все защищённые роуты требуют cookie `auth` (JWT) через `guardPlugin`.
+- Почти все защищённые роуты требуют либо cookie `auth` (JWT), либо заголовок `x-api-key` через `guardPlugin`.
 - Роль `director` обязательна для админских роутов пользователей, статистики и Mango sync/mapping.
 - Ошибки обычно имеют формат `{ "message": "..." }`.
 - Обработка записей асинхронная: `POST /records/upload` и Mango webhook возвращают ответ до завершения AI-пайплайна.
@@ -16,7 +16,8 @@
 
 ## Auth model
 
-- Аутентификация: HttpOnly cookie `auth`.
+- Аутентификация: HttpOnly cookie `auth` или служебный заголовок `x-api-key`.
+- Для `x-api-key` backend сравнивает значение с `SERVICE_API_KEY` из env.
 - JWT payload: `{ id: number, role: "director" | "manager" }`.
 - Cookie settings (текущие):
   - `httpOnly: true`

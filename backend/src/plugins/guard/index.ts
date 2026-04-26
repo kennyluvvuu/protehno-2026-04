@@ -20,7 +20,37 @@ export const guardPlugin = (userService: UserService) =>
                 secret: Bun.env.JWT_SECRET!,
             }),
         )
-        .derive({ as: "global" }, async ({ jwt, cookie, status }) => {
+        .derive({ as: "global" }, async ({ jwt, cookie, request, status }) => {
+            const serviceApiKey = Bun.env.SERVICE_API_KEY?.trim();
+            const requestApiKey = request.headers.get("x-api-key")?.trim();
+
+            if (
+                typeof serviceApiKey === "string" &&
+                serviceApiKey.length > 0 &&
+                requestApiKey === serviceApiKey
+            ) {
+                const users = await userService.getAllUsers();
+                const director = users.find((user) => user.role === "director");
+
+                if (!director) {
+                    return status(500, {
+                        message:
+                            "Service auth failed: no director user available",
+                    });
+                }
+
+                const currentUser: GuardContextUser = {
+                    id: director.id,
+                    role: "director",
+                };
+
+                return {
+                    userId: currentUser.id,
+                    userRole: currentUser.role,
+                    currentUser,
+                };
+            }
+
             const token = cookie.auth?.value;
 
             if (typeof token !== "string" || token.length === 0) {

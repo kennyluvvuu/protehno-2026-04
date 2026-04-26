@@ -4,12 +4,34 @@ import { detectAudioDurationSec } from "../records/audio-duration";
 import { IStorage } from "../../storage/interface";
 import { MangoClient } from "./client";
 import UserService from "../user/service";
-import type { MangoSummaryPayload, MangoRecordAddedPayload } from "./schema";
+import type {
+    MangoSummaryPayload,
+    MangoRecordAddedPayload,
+    MangoCallPayload,
+    MangoRecordingPayload,
+    MangoRecordTaggedPayload,
+    MangoDtmfPayload,
+    MangoSmsPayload,
+    MangoRecognizedOfflinePayload,
+} from "./schema";
 
 const mangoLog = (...args: unknown[]) => console.log("[mango]", ...args);
 
 const normalizeError = (e: unknown): string =>
     e instanceof Error ? e.message : "Unknown error";
+
+const inferDirectionFromCallEvent = (
+    event: MangoCallPayload,
+): "inbound" | "outbound" | "unknown" => {
+    const fromNumber = event.from?.number;
+    const toNumber = event.to?.number;
+    const fromExtension = event.from?.extension;
+    const toExtension = event.to?.extension;
+
+    if (fromNumber && typeof toExtension === "number") return "inbound";
+    if (typeof fromExtension === "number" && toNumber) return "outbound";
+    return "unknown";
+};
 
 export class MangoIngestionService {
     constructor(
@@ -178,6 +200,107 @@ export class MangoIngestionService {
                 message,
             );
         }
+    }
+
+    // Handle /events/call from Mango
+    // Keeps near-realtime call metadata in sync before /events/summary arrives
+    async handleCallEvent(event: MangoCallPayload): Promise<void> {
+        const direction = inferDirectionFromCallEvent(event);
+        const callerNumber =
+            event.from?.number ?? event.from?.extension?.toString();
+        const calleeNumber =
+            event.to?.number ?? event.to?.extension?.toString();
+
+        const callTo =
+            direction === "inbound"
+                ? callerNumber
+                : direction === "outbound"
+                  ? calleeNumber
+                  : undefined;
+
+        await this.recordService.upsertMangoRecord({
+            mangoEntryId: event.entry_id,
+            mangoCallId: event.call_id,
+            isMissed: false,
+            direction,
+            directionKind: direction,
+            callerNumber,
+            calleeNumber,
+            lineNumber: event.to?.line_number,
+            callStartedAt: new Date(event.timestamp * 1000),
+            callTo,
+        });
+
+        mangoLog("call event handled", {
+            entry_id: event.entry_id,
+            call_id: event.call_id,
+            call_state: event.call_state,
+            seq: event.seq,
+        });
+    }
+
+    // Handle /events/recording from Mango
+    // Tracks recording lifecycle; record/added remains the trigger for download
+    async handleRecordingEvent(event: MangoRecordingPayload): Promise<void> {
+        await this.recordService.upsertMangoRecord({
+            mangoEntryId: event.entry_id,
+            mangoCallId: event.call_id,
+            extension: event.extension,
+            isMissed: false,
+        });
+
+        mangoLog("recording event handled", {
+            entry_id: event.entry_id,
+            call_id: event.call_id,
+            recording_id: event.recording_id,
+            recording_state: event.recording_state,
+            seq: event.seq,
+        });
+    }
+
+    // Handle /events/record/tagged from Mango
+    // Notification-only event in current implementation
+    async handleRecordTaggedEvent(
+        event: MangoRecordTaggedPayload,
+    ): Promise<void> {
+        mangoLog("record/tagged event handled", {
+            entry_id: event.entry_id,
+            recording_id: event.recording_id,
+            user_id: event.user_id,
+            product_id: event.product_id,
+        });
+    }
+
+    // Handle /events/dtmf from Mango
+    // Notification-only event in current implementation
+    async handleDtmfEvent(event: MangoDtmfPayload): Promise<void> {
+        mangoLog("dtmf event handled", {
+            entry_id: event.entry_id,
+            call_id: event.call_id,
+            seq: event.seq,
+            location: event.location,
+        });
+    }
+
+    // Handle /events/sms from Mango
+    // Notification-only event in current implementation
+    async handleSmsEvent(event: MangoSmsPayload): Promise<void> {
+        mangoLog("sms event handled", {
+            command_id: event.command_id,
+            reason: event.reason,
+        });
+    }
+
+    // Handle /events/recognized/offline from Mango
+    // Notification-only event in current implementation
+    async handleRecognizedOfflineEvent(
+        event: MangoRecognizedOfflinePayload,
+    ): Promise<void> {
+        mangoLog("recognized/offline event handled", {
+            request_id: event.request_id,
+            result: event.result,
+            recognized: event.recognized,
+        });
     }
 
     // Mirrors processRecordInBackground from records/index.ts
